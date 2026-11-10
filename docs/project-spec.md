@@ -383,7 +383,8 @@ Przykładowe body:
   "username": "john.doe",
   "email": "john.doe@example.com",
   "firstName": "John",
-  "lastName": "Doe"
+  "lastName": "Doe",
+  "temporaryPassword": "Temp-Pass-123"
 }
 ```
 
@@ -396,7 +397,13 @@ Wymagania:
 -   domyślna rola `USER` jest nadawana przez Keycloak (default roles
     realmu) --- user-service nie wywołuje w tym celu `auth-service`;
 -   rejestracja zdarzenia audytowego;
--   bez zwracania haseł ani sekretów.
+-   bez zwracania haseł ani sekretów;
+-   `temporaryPassword` (8--128 znaków) jest przekazywane wyłącznie do
+    Keycloak jako hasło tymczasowe (`temporary=true`, wymuszona zmiana
+    przy pierwszym logowaniu); aplikacja go nie zapisuje, nie loguje i
+    nie zwraca;
+-   `username` i `email` są normalizowane do małych liter; `username`
+    jest niezmienny po utworzeniu.
 
 Tworzenie konta wymaga obsługi częściowej awarii. Jeżeli Keycloak
 utworzy konto, a zapis lokalny się nie powiedzie, system powinien
@@ -442,6 +449,44 @@ opcjonalny filtr `search`. Maksymalny rozmiar strony: 100.
 Status aplikacyjny jest spójny ze stanem `enabled` w Keycloak. Należy
 zdefiniować zachowanie w przypadku braku synchronizacji i udostępnić
 logi diagnostyczne bez ujawniania sekretów.
+
+Przyjęte zachowanie (Etap 3):
+
+-   źródłem prawdy dla `enabled` jest Keycloak; `GET /api/users/{id}`
+    porównuje stan i przy rozbieżności aktualizuje profil (log WARN);
+    brak konta w Keycloak to log ERROR, a gdy Keycloak jest niedostępny,
+    zwracane są dane lokalne (log WARN); lista działa na danych lokalnych;
+-   każda operacja zapisu wykonuje najpierw zmianę w Keycloak, potem
+    lokalnie (bez wywołań HTTP w transakcji DB); przy błędzie zapisu
+    lokalnego zmiana w Keycloak jest wycofywana (kompensacja), a gdy to
+    się nie uda --- log ERROR z identyfikatorami i błąd 500
+    `USER_SYNC_FAILED`; usunięcie jest idempotentne (brak konta w
+    Keycloak przy ponownym `DELETE` nie jest błędem).
+
+#### Profil własny i konta spoza aplikacji
+
+-   `GET /api/users/me` tworzy profil just-in-time na podstawie danych
+    z Keycloak, jeśli konto powstało poza user-service (realm import,
+    konsola Keycloak); konta serwisowe nie mają profilu (404);
+-   `PUT /api/users/me` zmienia `email`, `firstName`, `lastName`
+    (unikalność e-maila sprawdza Keycloak --- konflikt to 409).
+
+#### Dodatkowe reguły
+
+-   reguła ostatniego aktywnego `ADMIN` liczy konta z rolą przypisaną
+    bezpośrednio (nie przez grupy/role złożone); sprawdzenie nie jest
+    atomowe z operacją (znane ograniczenie MVP);
+-   zmiana e-maila ustawia `emailVerified=false` w Keycloak;
+-   `MANAGER` nie może edytować kont z rolą `ADMIN` (403
+    `ADMIN_ACCOUNT_PROTECTED`) --- zmiana e-maila administratora byłaby
+    ścieżką przejęcia konta;
+-   błędy zawierają właściwość `code` (np. `USER_NOT_FOUND`,
+    `USERNAME_OR_EMAIL_TAKEN`, `LAST_ADMIN`, `VALIDATION_FAILED` z listą
+    `errors`, `KEYCLOAK_UNAVAILABLE`), używaną przez UI do komunikatów;
+-   sortowanie listy tylko po: `username`, `email`, `firstName`,
+    `lastName`, `enabled`, `createdAt`, `updatedAt` (domyślnie
+    `createdAt,desc`); inne pole to 400; `size` powyżej 100 jest
+    przycinany do 100.
 
 ### 6.2 Auth Service
 

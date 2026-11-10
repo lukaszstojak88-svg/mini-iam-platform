@@ -88,6 +88,10 @@ services:
       USER_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/mini_iam
       USER_SERVICE_DB_USERNAME: user_service
       USER_SERVICE_DB_PASSWORD: ${USER_SERVICE_DB_PASSWORD}
+      # Keycloak Admin REST API via the technical client mini-iam-admin (Client Credentials)
+      KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/mini-iam/protocol/openid-connect/token
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${MINI_IAM_ADMIN_CLIENT_SECRET}
     ports:
       - "127.0.0.1:${USER_SERVICE_PORT:-8081}:8081"
     labels:

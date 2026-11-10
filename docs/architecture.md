@@ -7,7 +7,7 @@
 
 | Komponent | Port | Dane | Odpowiedzialność |
 |---|---|---|---|
-| `user-service` | 8081 | PostgreSQL, schemat `users` (użytkownik DB `user_service`) | profile użytkowników, CRUD kont w Keycloak |
+| `user-service` | 8081 | PostgreSQL, schemat `users` (użytkownik DB `user_service`) | profile użytkowników, CRUD kont w Keycloak (Admin REST API przez klienta `mini-iam-admin`, kompensacja przy częściowych awariach) |
 | `auth-service` | 8082 | brak (role w Keycloak) | odczyt/przypisywanie Realm Roles |
 | `audit-service` | 8083 | PostgreSQL, schemat `audit` (użytkownik DB `audit_service`) | trwały dziennik audytowy |
 | Keycloak 26.8 | 8080 | PostgreSQL, osobna baza `keycloak` | tożsamość, tokeny, role (realm `mini-iam`) |

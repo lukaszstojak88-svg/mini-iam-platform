@@ -7,8 +7,9 @@ w architekturze mikroserwisowej (Spring Boot 3.5 + Keycloak 26 + PostgreSQL + EL
 - Plan etapów: [`docs/implementation-plan.md`](docs/implementation-plan.md)
 - Architektura: [`docs/architecture.md`](docs/architecture.md)
 
-> **Status:** Etap 2 (bezpieczeństwo). Logowanie przez Keycloak (OIDC + PKCE) w Angularze, weryfikacja JWT
-> w każdym serwisie, endpoint `GET /api/auth/me`. Logika biznesowa (użytkownicy, role, audyt) — Etapy 3–5.
+> **Status:** Etap 3 (User Service). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
+> zarządzanie użytkownikami w Keycloak i lokalnym profilu (`/api/users`). Role (Etap 4), audyt (Etap 5) i widoki
+> UI do zarządzania (Etap 6) — w kolejnych etapach.
 
 ## 1. Wymagania lokalne
 
@@ -136,7 +137,54 @@ curl -i http://localhost:8082/api/auth/me                                  # 401
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8082/api/auth/me   # 200
 ```
 
-## 7. Logi i śledzenie żądań (ELK)
+## 7. Zarządzanie użytkownikami (user-service)
+
+API `http://localhost:8081/api/users` (spec §6.1). Uprawnienia wg macierzy spec §2.1:
+
+| Endpoint | Role |
+|---|---|
+| `GET /api/users?page&size&sort&search` | ADMIN, MANAGER |
+| `GET /api/users/{id}` | ADMIN, MANAGER |
+| `POST /api/users` | ADMIN, MANAGER |
+| `PUT /api/users/{id}` | ADMIN, MANAGER (MANAGER nie edytuje kont z rolą ADMIN) |
+| `PATCH /api/users/{id}/status` | ADMIN |
+| `DELETE /api/users/{id}` | ADMIN |
+| `GET /api/users/me`, `PUT /api/users/me` | każdy zalogowany użytkownik |
+
+Przykład (token użytkownika z rolą ADMIN w zmiennej `$TOKEN`, np. skopiowany z narzędzi deweloperskich
+przeglądarki po zalogowaniu do frontendu; token Client Credentials nie ma ról aplikacyjnych):
+
+```bash
+curl -X POST http://localhost:8081/api/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json'   -d '{"username":"john.doe","email":"john.doe@example.com","firstName":"John","lastName":"Doe","temporaryPassword":"Temp-Pass-123"}'
+curl "http://localhost:8081/api/users?search=john&size=20&sort=username,asc" -H "Authorization: Bearer $TOKEN"
+curl -X PATCH http://localhost:8081/api/users/<id>/status -H "Authorization: Bearer $TOKEN"   -H 'Content-Type: application/json' -d '{"enabled":false}'
+curl -X DELETE http://localhost:8081/api/users/<id> -H "Authorization: Bearer $TOKEN"
+```
+
+Zachowanie:
+
+- **Nowe konto** powstaje w Keycloak z hasłem tymczasowym — przy pierwszym logowaniu Keycloak wymusza zmianę
+  hasła. Hasło trafia tylko do Keycloak (nie jest zapisywane, logowane ani zwracane). Rola `USER` jest nadawana
+  automatycznie (default roles). `username`/`email` zapisywane małymi literami; `username` jest niezmienny.
+- **`id` vs `keycloakId`:** API user-service używa lokalnego `id` (UUID profilu); `keycloakId` (zwracany w odpowiedzi)
+  identyfikuje konto w Keycloak i będzie używany przez auth-service.
+- **Ostatni aktywny administrator** nie może zostać dezaktywowany ani usunięty (409 `LAST_ADMIN`). Liczone są konta
+  z rolą ADMIN przypisaną bezpośrednio (tak przypisuje auth-service), nie przez grupy ani role złożone.
+- **Zmiana e-maila** ustawia `emailVerified=false` w Keycloak (nowy adres nie jest zweryfikowany).
+- **Profil just-in-time:** konta spoza aplikacji (np. `admin` z realm importu) dostają profil przy pierwszym
+  `GET /api/users/me`; pojawiają się na liście dopiero po tym wywołaniu.
+- **Częściowe awarie:** zmiana idzie najpierw do Keycloak, potem do bazy; gdy zapis lokalny się nie uda, zmiana
+  w Keycloak jest wycofywana. Jeśli wycofanie też się nie uda, w logu jest ERROR z `keycloakId` i identyfikatorem
+  profilu (do ręcznego uzgodnienia), a API zwraca 500 `USER_SYNC_FAILED`. `DELETE` można bezpiecznie ponowić.
+- **Status:** źródłem prawdy jest Keycloak — `GET /api/users/{id}` wyrównuje lokalny `enabled` i loguje rozbieżność.
+- **Błędy:** ProblemDetail z polem `code` (np. `USERNAME_OR_EMAIL_TAKEN`, `VALIDATION_FAILED` + `errors`,
+  `KEYCLOAK_UNAVAILABLE` → 503).
+- **Znane ograniczenia:** operacje nie są jeszcze audytowane (integracja z audit-service w Etapie 5); reguła
+  ostatniego administratora nie jest chroniona blokadą — dwie równoczesne dezaktywacje dwóch ostatnich adminów
+  mogą obie przejść; konto bez imienia/nazwiska może zostać poproszone przez Keycloak o ich uzupełnienie przy
+  logowaniu (domyślny profil użytkownika Keycloak).
+
+## 8. Logi i śledzenie żądań (ELK)
 
 Każdy serwis przyjmuje lub generuje nagłówek `X-Correlation-Id`, zwraca go w odpowiedzi i dodaje
 do każdego wpisu logu jako `correlationId` (spec §16).
@@ -153,7 +201,7 @@ curl -i -H "X-Correlation-Id: demo-123" http://localhost:8081/actuator/health
 W Kibanie: **Discover** → data view *Mini IAM logs* → zapytanie `correlationId : "demo-123"`.
 Żądania do `/actuator/**` nie generują logu zakończenia (healthchecki), ale też dostają `X-Correlation-Id`.
 
-## 8. Testy
+## 9. Testy
 
 ```bash
 ./mvnw test      # testy jednostkowe i MockMvc (reguły 401/403, CORS, converter ról)
@@ -162,10 +210,11 @@ cd frontend/mini-iam-ui && npm test -- --watch=false   # testy Angular (Vitest)
 ```
 
 Testy integracyjne uruchamiają PostgreSQL i Keycloak (z tym samym realm importem co Compose)
-w Testcontainers: migracje Liquibase na czystej bazie oraz walidacja prawdziwych tokenów
-(poprawny token, zły issuer, brak audience, zmieniony podpis). Nie wymagają uruchomionego Compose ani ELK.
+w Testcontainers: migracje Liquibase na czystej bazie, walidacja prawdziwych tokenów
+(poprawny token, zły issuer, brak audience, zmieniony podpis) oraz pełny cykl życia użytkownika w user-service
+(tworzenie w Keycloak, duplikaty, edycja, status, ostatni admin, usuwanie, profil just-in-time). Nie wymagają uruchomionego Compose ani ELK.
 
-## 9. Typowe problemy
+## 10. Typowe problemy
 
 | Problem | Rozwiązanie |
 |---|---|
@@ -174,6 +223,7 @@ w Testcontainers: migracje Liquibase na czystej bazie oraz walidacja prawdziwych
 | `npm ci` / `npx` kończy się błędem certyfikatu (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) | `NODE_OPTIONS=--use-system-ca` (używa magazynu certyfikatów systemu) |
 | Frontend: pętla przekierowań lub 401 po zalogowaniu | Keycloak i serwisy muszą działać (`docker compose ps`); issuer w tokenie to `http://localhost:8080/...` — otwieraj Keycloak przez `localhost`, nie `127.0.0.1`. |
 | Zmiana roli nie jest widoczna od razu | Role są w tokenie; zmiana obowiązuje po odświeżeniu tokena (do 5 min) lub ponownym zalogowaniu (spec §11.2). |
+| user-service: 502 `KEYCLOAK_INTEGRATION_ERROR` | Klient `mini-iam-admin` odrzucony przez Keycloak — sprawdź, czy `MINI_IAM_ADMIN_CLIENT_SECRET` w `.env` jest taki sam jak przy imporcie realmu (zmiana sekretu wymaga `docker compose down -v`). |
 | `required variable ... is missing a value` przy `docker compose` | Brak `.env` lub brakująca zmienna — skopiuj `.env.example` do `.env`. |
 | Testy `*IT` nie startują (`Could not find a valid Docker environment`) | Uruchom Docker Desktop. |
 | Admin API Keycloak zwraca 401 dla service account | Token musi zawierać scope `kc-admin-api` (Keycloak ≥ 26.8.2) — jest w realm imporcie; przy starym wolumenie zrób `docker compose down -v`. |

@@ -1,0 +1,19 @@
+# Optimistic locking for user profiles (prevents lost updates between concurrent requests).
+databaseChangeLog:
+  - changeSet:
+      id: 002-add-users-version
+      author: mini-iam
+      changes:
+        - addColumn:
+            tableName: users
+            columns:
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            tableName: users
+            columnName: version

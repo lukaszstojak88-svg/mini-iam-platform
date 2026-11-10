@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.security.oauth2.client.registration.keycloak-admin.client-secret=unused-in-this-test")
 @AutoConfigureMockMvc
 @Testcontainers
 class UserServiceApplicationIT {

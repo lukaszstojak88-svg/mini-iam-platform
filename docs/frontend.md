@@ -10,6 +10,7 @@
 |---|---|
 | Projekt Angular, Material, logowanie OIDC + PKCE, guard, interceptory | gotowe (Etap 2) |
 | Shell (sidebar + topbar), Dashboard (`/api/auth/me`), Access Denied | gotowe (Etap 2), wygląd do dopracowania w Etapie 6 |
+| API user-service (lista, szczegóły, tworzenie, edycja, status, usuwanie, `/me`) | gotowe (Etap 3) |
 | Users, User Details, Create/Edit User, Roles, Audit Logs | Etap 6 (wymaga API z Etapów 3–5) |
 
 ## 2. Stack i konwencje
@@ -63,7 +64,7 @@ UI **nie jest granicą bezpieczeństwa** — backend zawsze sprawdza uprawnienia
 | Pozycja / akcja | ADMIN | MANAGER | USER | AUDITOR |
 |---|:-:|:-:|:-:|:-:|
 | Dashboard (własny profil) | ✓ | ✓ | ✓ | ✓ |
-| Edycja własnego profilu | ✓ | ✓ | ✓ | — |
+| Edycja własnego profilu (e-mail, imię, nazwisko) | ✓ | ✓ | ✓ | ✓* |
 | Menu **Users**: lista, szczegóły | ✓ | ✓ | — | — |
 | Tworzenie / edycja użytkownika | ✓ | ✓ | — | — |
 | Aktywacja / dezaktywacja, usunięcie | ✓ | — | — | — |
@@ -71,8 +72,9 @@ UI **nie jest granicą bezpieczeństwa** — backend zawsze sprawdza uprawnienia
 | Menu **Roles**: przypisanie / odebranie | ✓ | — | — | — |
 | Menu **Audit log** | ✓ | — | — | ✓ |
 
-Założenie (do potwierdzenia w Etapie 6): edycja własnego profilu (`PUT /api/users/me`) odbywa się na Dashboardzie;
-AUDITOR nie ma edycji profilu, bo macierz §2.1 jej nie przewiduje.
+Edycja własnego profilu (`PUT /api/users/me`) odbywa się na Dashboardzie. *Każde konto ma bazową rolę `USER`
+(default roles realmu), więc backend (`hasAnyRole('ADMIN','MANAGER','USER')`) pozwala na nią także audytorom —
+UI pokazuje formularz każdemu, kto ma rolę `USER`.
 
 ## 5. Widoki MVP (spec §10.1)
 
@@ -94,15 +96,20 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
 - **Dashboard** — nagłówek strony, kafelki z podstawowymi informacjami (np. liczba ról użytkownika), karta profilu
   (imię, nazwisko, username, e-mail, keycloakId, role jako chipy), formularz edycji dozwolonych pól własnego profilu.
 - **Users** — `mat-table` w karcie; kolumny: użytkownik (imię i nazwisko + username), e-mail, status (pill),
-  data utworzenia, akcje. Wyszukiwanie `search` z debounce ~300 ms, paginacja i sortowanie **po stronie serwera**
+  data utworzenia, akcje. Sortowanie tylko po polach obsługiwanych przez API (`username`, `email`, `firstName`,
+  `lastName`, `enabled`, `createdAt`, `updatedAt`); odpowiedź: `{content, page, size, totalElements, totalPages}`. Wyszukiwanie `search` z debounce ~300 ms, paginacja i sortowanie **po stronie serwera**
   (`page`, `size` ∈ {10, 20, 50, 100}, maks. 100 — spec §6.1), przycisk „Dodaj użytkownika” (ADMIN, MANAGER).
   Stan listy (strona, filtr) w query params, żeby odświeżenie strony go zachowało.
 - **User Details** — dane profilu, status, role (z auth-service po `keycloakId` — nie mylić z lokalnym `id`).
   Akcje ADMIN: aktywuj/dezaktywuj, usuń — zawsze z dialogiem potwierdzenia. Akcja „Edytuj” (ADMIN, MANAGER).
-- **Create / Edit User** — Reactive Forms; walidacja zgodna z backendem: `username` wymagany, ≤ 100;
-  `email` wymagany, format e-mail, ≤ 255; `firstName`, `lastName` opcjonalne, ≤ 100 (spec §8.1).
-  `username` nieedytowalny po utworzeniu. Brak pól hasła i ról. Błąd 409 → komunikat przy polu (duplikat
-  username/e-mail). Przycisk zapisu zablokowany w trakcie wysyłania.
+- **Create / Edit User** — Reactive Forms; walidacja zgodna z backendem: `username` wymagany, 3–100 znaków
+  `[A-Za-z0-9._-]` (backend zapisuje małymi literami); `email` wymagany, format e-mail, ≤ 255; `firstName`,
+  `lastName` opcjonalne, ≤ 100 (spec §8.1). Tylko przy tworzeniu: **hasło tymczasowe** (wymagane, 8–128 znaków,
+  `type="password"`, z polem potwierdzenia po stronie UI) — trafia wyłącznie do Keycloak, użytkownik zmienia je
+  przy pierwszym logowaniu; formularz nie przechowuje go po wysłaniu. `username` nieedytowalny po utworzeniu.
+  Brak pól ról. Błędy: 400 `VALIDATION_FAILED` → komunikaty przy polach z `errors[]`; 409
+  `USERNAME_OR_EMAIL_TAKEN` → komunikat przy polach username/e-mail; 403 `ADMIN_ACCOUNT_PROTECTED` (MANAGER
+  edytuje konto ADMIN) → komunikat w formularzu. Przycisk zapisu zablokowany w trakcie wysyłania.
 - **Roles** — lista ról aplikacyjnych (`GET /api/roles`, bez `SERVICE`) z opisami; wybór użytkownika
   (wyszukiwarka) → przypisane role jako chipy; przypisanie `ADMIN`/`MANAGER`/`AUDITOR`, odebranie z potwierdzeniem.
   `USER` pokazany jako rola bazowa bez możliwości odebrania. Akcje na własnym koncie zablokowane
@@ -119,7 +126,10 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
 - Identyfikatory: lokalny `id` (UUID) dla user-service, `keycloakId` dla auth-service i audytu — user-service zwraca
   `keycloakId` w DTO.
 - Daty z API w ISO-8601 UTC; wyświetlane w strefie przeglądarki (`DatePipe`, locale `pl`).
-- Błędy w formacie ProblemDetail (`application/problem+json`):
+- Błędy w formacie ProblemDetail (`application/problem+json`) z właściwością `code` (lista kodów user-service:
+  `VALIDATION_FAILED` + `errors[{field, message}]`, `INVALID_REQUEST`, `INVALID_USER_DATA`, `USER_NOT_FOUND`,
+  `USERNAME_OR_EMAIL_TAKEN`, `LAST_ADMIN`, `ADMIN_ACCOUNT_PROTECTED`, `USER_SYNC_FAILED`, `KEYCLOAK_UNAVAILABLE`,
+  `KEYCLOAK_INTEGRATION_ERROR`, `INTERNAL_ERROR`) — komunikaty UI mapujemy po `code`, a gdy go brak, po statusie:
   - 401 → ponowne logowanie (`httpErrorInterceptor`), 403 → `/access-denied`;
   - 400 → błędy walidacji przy polach formularza; 404 → „Nie znaleziono”; 409 → komunikat konfliktu;
   - 502/503/0 → „Usługa chwilowo niedostępna”;

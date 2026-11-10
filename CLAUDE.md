@@ -23,8 +23,8 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-**Etap 2 — Bezpieczeństwo** — zrealizowany, oczekuje akceptacji użytkownika (Etap 1 zaakceptowany).
-Następny: Etap 3 — User Service (nie zaczynać bez decyzji użytkownika).
+**Etap 3 — User Service** — zrealizowany, oczekuje akceptacji użytkownika (Etapy 1–2 zaakceptowane).
+Następny: Etap 4 — Auth Service (nie zaczynać bez decyzji użytkownika).
 
 ## Komendy
 
@@ -67,6 +67,13 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 - `GET /api/auth/me` (auth-service) zwraca dane z JWT; role tylko aplikacyjne (bez `SERVICE`).
 - Frontend: Angular 22 + Material 22 + keycloak-angular 22 (`check-sso`, PKCE S256, Bearer tylko dla
   `http://localhost:808[1-3]/api/**`), testy Vitest. Konfiguracja w `src/environments/environment.ts`.
+- user-service ↔ Keycloak: własny `KeycloakAdminClient` (Spring RestClient + Spring Security OAuth2 Client,
+  client_credentials `mini-iam-admin`, timeouty 2 s/5 s, bez retry). Kolejność: Keycloak → baza, przy błędzie
+  zapisu lokalnego kompensacja w Keycloak; `enabled` — źródło prawdy Keycloak (wyrównywane przy `GET /{id}`).
+- Tworzenie konta z `temporaryPassword` (tylko do Keycloak, `temporary=true`); profil just-in-time przy
+  `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN.
+- Błędy user-service: ProblemDetail + `code` (`ErrorCode`); lista: sort tylko po whitelist, `size` ≤ 100.
+- Audyt operacji user-service zostanie dodany w Etapie 5 (integracja Feign z audit-service).
 - Komentarze w kodzie i plikach konfiguracyjnych po angielsku; dokumentacja Markdown po polsku.
 - UI: z makiety bierzemy tylko wygląd; funkcje spoza MVP (tworzenie ról, import/eksport, Pending Reviews,
   Settings, Billing, globalna wyszukiwarka, powiadomienia) pomijamy.

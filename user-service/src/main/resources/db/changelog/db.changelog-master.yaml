@@ -1,3 +1,9 @@
 # user-service changelog (`users` schema).
-# Add migrations as new files in changes/ (e.g. 001-create-users-table.yaml in Stage 3).
-databaseChangeLog: []
+# Add migrations as new files in changes/ and never edit changesets that were already applied.
+databaseChangeLog:
+  - include:
+      file: changes/001-create-users-table.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: changes/002-add-users-version.yaml
+      relativeToChangelogFile: true

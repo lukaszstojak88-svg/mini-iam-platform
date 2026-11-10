@@ -20,6 +20,22 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/mini-iam}
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/mini-iam/protocol/openid-connect/certs}
           audiences: ${KEYCLOAK_AUDIENCE:mini-iam-api}
+      client:
+        # Technical client used for the Keycloak Admin REST API (spec §5.4). The secret has no default on purpose.
+        registration:
+          keycloak-admin:
+            provider: keycloak
+            client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:mini-iam-admin}
+            client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8080/realms/mini-iam/protocol/openid-connect/token}
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+        default-page-size: 20
   datasource:
     url: ${USER_SERVICE_DB_URL:jdbc:postgresql://localhost:5432/mini_iam}
     username: ${USER_SERVICE_DB_USERNAME:user_service}
@@ -42,6 +58,13 @@ app:
     client-id: ${KEYCLOAK_CLIENT_ROLES_CLIENT_ID:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  keycloak:
+    admin:
+      # Keycloak base URL used for Admin REST API calls (inside Docker: http://keycloak:8080)
+      base-url: ${KEYCLOAK_ADMIN_BASE_URL:http://localhost:8080}
+      realm: ${KEYCLOAK_REALM:mini-iam}
+      connect-timeout: 2s
+      read-timeout: 5s
 
 management:
   endpoints:
