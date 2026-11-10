@@ -1,0 +1,25 @@
+# Secrets and local configuration
+.env
+*.env.local
+
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

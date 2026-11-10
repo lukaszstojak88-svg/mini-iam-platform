@@ -1,0 +1,7 @@
+# Docker Compose entry point for the repository root.
+# Service definitions: infrastructure/docker-compose.yml; variables: .env (copy of .env.example).
+name: mini-iam
+
+include:
+  - path: infrastructure/docker-compose.yml
+    env_file: .env

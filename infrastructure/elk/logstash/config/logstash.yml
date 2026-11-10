@@ -1,0 +1,3 @@
+# Logstash 9.x settings (pipeline definition lives in ../pipeline/).
+api.http.host: "0.0.0.0"
+pipeline.ecs_compatibility: v8

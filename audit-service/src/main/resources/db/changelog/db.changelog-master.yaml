@@ -1,0 +1,3 @@
+# audit-service changelog (`audit` schema).
+# Add migrations as new files in changes/ (e.g. 001-create-audit-events-table.yaml in Stage 5).
+databaseChangeLog: []

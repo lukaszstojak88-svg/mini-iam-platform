@@ -1,0 +1,249 @@
+# Mini IAM Platform - local environment (spec §14, §16).
+# Run from the repository root (compose.yaml includes this file together with .env):
+#   docker compose up -d --build                 # PostgreSQL, Keycloak, services
+#   docker compose --profile elk up -d --build   # + Elasticsearch, Logstash, Kibana, Filebeat
+# All ports are published on 127.0.0.1 only. Secrets come exclusively from .env.
+
+# Backend services log to json-file so Filebeat can read /var/lib/docker/containers/*/*-json.log
+# (Docker Desktop defaults to the "local" driver, which Filebeat cannot read).
+x-service-logging: &service-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-service-healthcheck: &service-healthcheck
+  test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/$${SERVER_PORT} && printf \"GET /actuator/health/readiness HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && grep -q UP <&3'"]
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 30s
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mini_iam
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set POSTGRES_SUPERUSER_PASSWORD in .env}
+      USER_SERVICE_DB_PASSWORD: ${USER_SERVICE_DB_PASSWORD:?set USER_SERVICE_DB_PASSWORD in .env}
+      AUDIT_SERVICE_DB_PASSWORD: ${AUDIT_SERVICE_DB_PASSWORD:?set AUDIT_SERVICE_DB_PASSWORD in .env}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mini_iam"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?set KEYCLOAK_ADMIN_USERNAME in .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
+      # Fixed issuer (http://localhost:8080) whether the token is obtained from the host or the Docker network
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8080}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Placeholders resolved in realm-import/mini-iam-realm.json
+      MINI_IAM_ADMIN_CLIENT_SECRET: ${MINI_IAM_ADMIN_CLIENT_SECRET:?set MINI_IAM_ADMIN_CLIENT_SECRET in .env}
+      MINI_IAM_ADMIN_PASSWORD: ${MINI_IAM_ADMIN_PASSWORD:?set MINI_IAM_ADMIN_PASSWORD in .env}
+    volumes:
+      - ./keycloak/realm-import:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && grep -q UP <&3'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  user-service:
+    build:
+      context: ..
+      dockerfile: user-service/Dockerfile
+    image: mini-iam/user-service:local
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      USER_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/mini_iam
+      USER_SERVICE_DB_USERNAME: user_service
+      USER_SERVICE_DB_PASSWORD: ${USER_SERVICE_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:${USER_SERVICE_PORT:-8081}:8081"
+    labels:
+      co.elastic.logs/enabled: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    logging: *service-logging
+
+  auth-service:
+    build:
+      context: ..
+      dockerfile: auth-service/Dockerfile
+    image: mini-iam/auth-service:local
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8082
+    ports:
+      - "127.0.0.1:${AUTH_SERVICE_PORT:-8082}:8082"
+    labels:
+      co.elastic.logs/enabled: "true"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    logging: *service-logging
+
+  audit-service:
+    build:
+      context: ..
+      dockerfile: audit-service/Dockerfile
+    image: mini-iam/audit-service:local
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8083
+      AUDIT_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/mini_iam
+      AUDIT_SERVICE_DB_USERNAME: audit_service
+      AUDIT_SERVICE_DB_PASSWORD: ${AUDIT_SERVICE_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:${AUDIT_SERVICE_PORT:-8083}:8083"
+    labels:
+      co.elastic.logs/enabled: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    logging: *service-logging
+
+  # ---------------------------------------------------------------------------
+  # ELK ("elk" profile) - spec §16
+  # ---------------------------------------------------------------------------
+  elasticsearch:
+    profiles: ["elk"]
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+      xpack.license.self_generated.type: basic
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in .env}
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:$${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  es-setup:
+    profiles: ["elk"]
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    restart: "no"
+    user: "0"
+    entrypoint: ["sh", "/setup/es-setup.sh"]
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      KIBANA_SYSTEM_PASSWORD: ${KIBANA_SYSTEM_PASSWORD:?set KIBANA_SYSTEM_PASSWORD in .env}
+      LOGSTASH_WRITER_PASSWORD: ${LOGSTASH_WRITER_PASSWORD:?set LOGSTASH_WRITER_PASSWORD in .env}
+    volumes:
+      - ./elk/setup:/setup:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  logstash:
+    profiles: ["elk"]
+    image: docker.elastic.co/logstash/logstash:9.5.5
+    restart: unless-stopped
+    environment:
+      LOGSTASH_WRITER_PASSWORD: ${LOGSTASH_WRITER_PASSWORD}
+      LS_JAVA_OPTS: -Xms256m -Xmx256m
+    volumes:
+      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    depends_on:
+      es-setup:
+        condition: service_completed_successfully
+
+  kibana:
+    profiles: ["elk"]
+    image: docker.elastic.co/kibana/kibana:9.5.5
+    restart: unless-stopped
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: ${KIBANA_SYSTEM_PASSWORD}
+    ports:
+      - "127.0.0.1:${KIBANA_PORT:-5601}:5601"
+    depends_on:
+      es-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:5601/api/status | grep -qE '^(200|401)$'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  kibana-setup:
+    profiles: ["elk"]
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    restart: "no"
+    user: "0"
+    entrypoint: ["sh", "/setup/kibana-setup.sh"]
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+    volumes:
+      - ./elk/setup:/setup:ro
+    depends_on:
+      kibana:
+        condition: service_healthy
+
+  filebeat:
+    profiles: ["elk"]
+    image: docker.elastic.co/beats/filebeat:9.5.5
+    restart: unless-stopped
+    # root is required to read /var/lib/docker/containers and docker.sock (both mounted read-only)
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - filebeat-data:/usr/share/filebeat/data
+    depends_on:
+      - logstash
+
+volumes:
+  postgres-data:
+  elasticsearch-data:
+  filebeat-data:

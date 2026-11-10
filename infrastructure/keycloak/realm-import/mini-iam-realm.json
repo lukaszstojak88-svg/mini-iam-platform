@@ -1,0 +1,131 @@
+{
+  "realm": "mini-iam",
+  "displayName": "Mini IAM",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      { "name": "ADMIN", "description": "Pełne zarządzanie użytkownikami, rolami i odczyt audytu" },
+      { "name": "MANAGER", "description": "Odczyt, tworzenie i edycja użytkowników" },
+      { "name": "USER", "description": "Rola bazowa: odczyt i edycja własnego profilu" },
+      { "name": "AUDITOR", "description": "Tylko odczyt zdarzeń audytowych" },
+      { "name": "SERVICE", "description": "Rola techniczna kont serwisowych (komunikacja serwis-serwis)" },
+      {
+        "name": "default-roles-mini-iam",
+        "description": "Role domyślne realmu",
+        "composite": true,
+        "composites": { "realm": ["USER"] }
+      }
+    ]
+  },
+  "defaultRole": { "name": "default-roles-mini-iam" },
+  "scopeMappings": [
+    { "client": "mini-iam-frontend", "roles": ["ADMIN", "MANAGER", "USER", "AUDITOR"] },
+    { "client": "mini-iam-admin", "roles": ["SERVICE"] }
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      { "client": "mini-iam-admin", "roles": ["view-users", "query-users", "manage-users", "view-realm"] }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mini-iam-frontend",
+      "name": "Mini IAM Frontend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "frontchannelLogout": true,
+      "rootUrl": "http://localhost:4200",
+      "baseUrl": "/",
+      "redirectUris": ["http://localhost:4200/*"],
+      "webOrigins": ["http://localhost:4200"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4200/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "mini-iam-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "mini-iam-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mini-iam-admin",
+      "name": "Mini IAM backend (technical client)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${MINI_IAM_ADMIN_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["basic", "roles", "profile", "email", "web-origins", "acr", "kc-admin-api"],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "mini-iam-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "mini-iam-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-mini-iam-admin",
+      "enabled": true,
+      "serviceAccountClientId": "mini-iam-admin",
+      "realmRoles": ["SERVICE"],
+      "clientRoles": {
+        "realm-management": ["view-users", "query-users", "manage-users", "view-realm"]
+      }
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Mini IAM",
+      "credentials": [
+        { "type": "password", "value": "${MINI_IAM_ADMIN_PASSWORD}", "temporary": false }
+      ],
+      "realmRoles": ["default-roles-mini-iam", "ADMIN"]
+    }
+  ]
+}

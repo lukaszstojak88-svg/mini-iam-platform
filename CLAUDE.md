@@ -22,14 +22,21 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-**Etap 1 — Repozytorium i infrastruktura** (jeszcze nie rozpoczęty).
-Najpierw sprawdź repozytorium, zaproponuj strukturę Maven multi-module, wersje kompatybilnych zależności
-i plan Docker Compose. Implementuj wyłącznie ten etap. Nie przechodź do logiki biznesowej ani Angular UI
-bez osobnej decyzji użytkownika.
+**Etap 1 — Repozytorium i infrastruktura** — zrealizowany, oczekuje akceptacji użytkownika.
+Następny: Etap 2 — Bezpieczeństwo (nie zaczynać bez decyzji użytkownika).
 
 ## Komendy
 
-_Uzupełnić w Etapie 1 (build, testy, uruchomienie infrastruktury)._
+```bash
+cp .env.example .env                          # potem ustaw własne sekrety
+./mvnw test                                   # testy jednostkowe
+./mvnw verify                                 # + testy integracyjne Testcontainers (wymaga Dockera)
+docker compose up -d --build                  # PostgreSQL, Keycloak, 3 serwisy (z katalogu głównego)
+docker compose --profile elk up -d --build    # + Elasticsearch, Logstash, Kibana, Filebeat
+docker compose --profile elk down -v          # czysty reset (ponowny realm import)
+```
+
+Na tej maszynie (Windows, proxy TLS) Maven wymaga `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT`.
 
 ## Podjęte decyzje (uzupełniają spec)
 
@@ -44,6 +51,11 @@ _Uzupełnić w Etapie 1 (build, testy, uruchomienie infrastruktury)._
 - Logi: JSON/ECS na stdout (structured logging Spring Boot) → Filebeat → Logstash → Elasticsearch → Kibana;
   stos ELK w profilu Compose `elk`. Śledzenie żądań wyłącznie przez `X-Correlation-Id` (bez osobnego
   tracking ID), propagowany przez Feign i zapisywany w audycie (spec §16).
+- Wersje: Spring Boot 3.5.x (+ Spring Cloud 2025.0.x), Java 21, Keycloak 26.8, PostgreSQL 17, Elastic 9.5.
+- Filtr `X-Correlation-Id` kopiowany osobno do każdego serwisu (brak modułu współdzielonego).
+- Konto `admin` (ADMIN) tworzone przez realm import, hasło z `.env` (`MINI_IAM_ADMIN_PASSWORD`).
+- Klient `mini-iam-admin` ma scope `kc-admin-api` (wymóg Admin API Keycloak ≥ 26.8.2) i `fullScopeAllowed=false`.
+- Komentarze w kodzie i plikach konfiguracyjnych po angielsku; dokumentacja Markdown po polsku.
 - UI: z makiety bierzemy tylko wygląd; funkcje spoza MVP (tworzenie ról, import/eksport, Pending Reviews,
   Settings, Billing, globalna wyszukiwarka, powiadomienia) pomijamy.
 

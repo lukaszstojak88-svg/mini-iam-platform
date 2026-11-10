@@ -1,0 +1,3 @@
+# user-service changelog (`users` schema).
+# Add migrations as new files in changes/ (e.g. 001-create-users-table.yaml in Stage 3).
+databaseChangeLog: []

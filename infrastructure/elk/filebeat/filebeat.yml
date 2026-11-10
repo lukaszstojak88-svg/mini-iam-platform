@@ -1,0 +1,35 @@
+# Filebeat: collects stdout of containers labelled co.elastic.logs/enabled=true
+# (backend services, json-file log driver) and ships it to Logstash (spec §16.4).
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+      hints.default_config:
+        enabled: false
+        type: filestream
+        id: container-${data.container.id}
+        prospector.scanner.symlinks: true
+        parsers:
+          - container: ~
+        paths:
+          - /var/lib/docker/containers/${data.container.id}/*.log
+
+processors:
+  # Service logs are ECS JSON - decode them into top-level fields.
+  # Non-JSON lines stay in `message` (with error.message describing the decode failure).
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      overwrite_keys: true
+      expand_keys: true
+      add_error_key: true
+  - drop_fields:
+      fields: ["agent", "input", "log.offset", "stream"]
+      ignore_missing: true
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+logging.level: info
+logging.metrics.enabled: false
+http.enabled: false

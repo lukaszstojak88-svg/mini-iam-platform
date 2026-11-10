@@ -1,0 +1,27 @@
+server:
+  port: ${AUTH_SERVICE_PORT:8082}
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+spring:
+  application:
+    name: auth-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+# Human-readable text format by default (local run). The Docker image sets
+# LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs -> JSON/ECS on stdout (spec §16.1).
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [${spring.application.name},%X{correlationId:-}] %logger{36} : %m%n"
