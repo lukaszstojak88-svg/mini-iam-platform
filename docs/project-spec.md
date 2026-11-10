@@ -669,6 +669,9 @@ Wymagania:
 
 ## 10. Angular --- zakres UI
 
+Szczegółowe ustalenia, funkcjonalności widoków i ograniczenia frontendu:
+[`frontend.md`](frontend.md).
+
 Aplikacja Angular jest pojedynczym SPA.
 
 ### 10.1 Widoki MVP

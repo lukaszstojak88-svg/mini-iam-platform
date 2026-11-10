@@ -6,6 +6,7 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 - [`docs/project-spec.md`](docs/project-spec.md) — wymagania, architektura, stack, kryteria jakości. **Nadrzędna specyfikacja.**
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) — etapy i kolejność realizacji, definicja zakończenia etapu.
+- [`docs/frontend.md`](docs/frontend.md) — ustalenia, funkcjonalności i ograniczenia frontendu. **Obowiązkowa lektura przy każdej pracy nad Angularem**; nowe ustalenia frontendowe dopisuj tam.
 - [`docs/gui.jpg`](docs/gui.jpg) — wzorzec wyglądu UI (tylko styl i układ, patrz spec §10.3).
 
 ### Co czytać przy którym etapie
@@ -17,7 +18,7 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 | 3 — User Service | §6.1, §7, §8.1, §9, §12, §15 |
 | 4 — Auth Service | §2, §6.2, §7, §8.3, §12, §15, §16.2 |
 | 5 — Audit Service | §6.3, §7, §8.2, §9, §12, §15, §16.2 |
-| 6 — Angular UI | §2.1, §5.2, §10 |
+| 6 — Angular UI | §2.1, §5.2, §10 + cały `docs/frontend.md` |
 | 7 — Dokumentacja i jakość | §11, §12, §14, §16 |
 
 ## Aktualny etap
@@ -70,6 +71,19 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 - UI: z makiety bierzemy tylko wygląd; funkcje spoza MVP (tworzenie ról, import/eksport, Pending Reviews,
   Settings, Billing, globalna wyszukiwarka, powiadomienia) pomijamy.
 
+## Skille projektu (`.claude/skills/`)
+
+| Skill | Kiedy |
+|---|---|
+| `stage-workflow` | rozpoczęcie, realizacja i zamknięcie etapu |
+| `backend-feature` | każdy nowy endpoint/funkcja w serwisach (autoryzacja, błędy, Liquibase, Feign, testy, kod skopiowany ×3) |
+| `keycloak-realm` | zmiany w realm imporcie, problemy z tokenami lub Admin API |
+| `verify-stack` | uruchomienie i weryfikacja end-to-end środowiska |
+| `commit` | każdy commit |
+
+Agent `change-reviewer` (`.claude/agents/change-reviewer.md`) — recenzja zmian (bugi, security, zgodność ze spec
+i wzorcami); tylko czyta i raportuje. Uruchamiać po zakończeniu etapu lub istotnej zmiany, przed commitem.
+
 ## Zasady pracy
 
 1. Najpierw przeanalizuj istniejące repozytorium. Nie nadpisuj istniejącego kodu ani konfiguracji bez sprawdzenia ich zawartości.
@@ -87,3 +101,4 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 13. Jeżeli wymaganie jest sprzeczne z bezpieczeństwem lub poprawnością architektury, zatrzymaj się i wyjaśnij problem przed implementacją.
 14. Po zakończeniu etapu podaj: zakres zmian, najważniejsze decyzje, komendy uruchomieniowe, wyniki testów i znane ograniczenia.
 15. Aktualizuj README i dokumentację (także sekcje „Aktualny etap”, „Komendy” i „Podjęte decyzje” w tym pliku), jeśli zmiana wpływa na sposób uruchamiania lub używania systemu.
+16. Commity wyłącznie wg skilla [`.claude/skills/commit/SKILL.md`](.claude/skills/commit/SKILL.md): zwięzły opis, bez informacji o Claude.
