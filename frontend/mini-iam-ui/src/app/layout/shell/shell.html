@@ -1,0 +1,30 @@
+<mat-sidenav-container class="shell">
+  <mat-sidenav mode="side" opened class="sidebar">
+    <div class="brand">Mini IAM</div>
+    <mat-nav-list>
+      <a mat-list-item routerLink="/dashboard" routerLinkActive="active" #rla="routerLinkActive"
+         [activated]="rla.isActive">
+        <mat-icon matListItemIcon>dashboard</mat-icon>
+        <span matListItemTitle>Dashboard</span>
+      </a>
+    </mat-nav-list>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <mat-toolbar class="topbar">
+      <span class="spacer"></span>
+      <span class="user">
+        <mat-icon>account_circle</mat-icon>
+        {{ auth.username }}
+      </span>
+      <button mat-stroked-button type="button" (click)="logout()">
+        <mat-icon>logout</mat-icon>
+        Wyloguj
+      </button>
+    </mat-toolbar>
+
+    <main class="content">
+      <router-outlet />
+    </main>
+  </mat-sidenav-content>
+</mat-sidenav-container>

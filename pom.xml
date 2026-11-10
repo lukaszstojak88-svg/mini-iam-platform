@@ -29,6 +29,8 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-cloud.version>2025.0.3</spring-cloud.version>
+        <!-- 3.x line targets Testcontainers 1.x, which Spring Boot 3.5 manages -->
+        <testcontainers-keycloak.version>3.9.1</testcontainers-keycloak.version>
     </properties>
 
     <dependencyManagement>

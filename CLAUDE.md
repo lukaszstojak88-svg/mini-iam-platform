@@ -22,8 +22,8 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-**Etap 1 — Repozytorium i infrastruktura** — zrealizowany, oczekuje akceptacji użytkownika.
-Następny: Etap 2 — Bezpieczeństwo (nie zaczynać bez decyzji użytkownika).
+**Etap 2 — Bezpieczeństwo** — zrealizowany, oczekuje akceptacji użytkownika (Etap 1 zaakceptowany).
+Następny: Etap 3 — User Service (nie zaczynać bez decyzji użytkownika).
 
 ## Komendy
 
@@ -34,9 +34,13 @@ cp .env.example .env                          # potem ustaw własne sekrety
 docker compose up -d --build                  # PostgreSQL, Keycloak, 3 serwisy (z katalogu głównego)
 docker compose --profile elk up -d --build    # + Elasticsearch, Logstash, Kibana, Filebeat
 docker compose --profile elk down -v          # czysty reset (ponowny realm import)
+./scripts/start-frontend.sh [--with-backend]          # Angular dev server, http://localhost:4200
+cd frontend/mini-iam-ui && npx ng test --watch=false   # testy Angular (Vitest)
+cd frontend/mini-iam-ui && npx ng build                # build produkcyjny
 ```
 
-Na tej maszynie (Windows, proxy TLS) Maven wymaga `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT`.
+Na tej maszynie (Windows, proxy TLS) Maven wymaga `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT`,
+a npm/npx `NODE_OPTIONS=--use-system-ca`.
 
 ## Podjęte decyzje (uzupełniają spec)
 
@@ -55,6 +59,13 @@ Na tej maszynie (Windows, proxy TLS) Maven wymaga `MAVEN_OPTS=-Djavax.net.ssl.tr
 - Filtr `X-Correlation-Id` kopiowany osobno do każdego serwisu (brak modułu współdzielonego).
 - Konto `admin` (ADMIN) tworzone przez realm import, hasło z `.env` (`MINI_IAM_ADMIN_PASSWORD`).
 - Klient `mini-iam-admin` ma scope `kc-admin-api` (wymóg Admin API Keycloak ≥ 26.8.2) i `fullScopeAllowed=false`.
+- JWT: `issuer-uri` (walidacja `iss` = `http://localhost:8080/realms/mini-iam`) + `jwk-set-uri` (w Dockerze
+  `http://keycloak:8080/...`) + `audiences: mini-iam-api`. Pakiet `security` (converter ról, `SecurityConfig`,
+  401/403 jako ProblemDetail, CORS) kopiowany do każdego serwisu. Reguły: `/internal/api/**` → `ROLE_SERVICE`,
+  `/api/**` → authenticated + `@PreAuthorize` per endpoint, reszta `denyAll`.
+- `GET /api/auth/me` (auth-service) zwraca dane z JWT; role tylko aplikacyjne (bez `SERVICE`).
+- Frontend: Angular 22 + Material 22 + keycloak-angular 22 (`check-sso`, PKCE S256, Bearer tylko dla
+  `http://localhost:808[1-3]/api/**`), testy Vitest. Konfiguracja w `src/environments/environment.ts`.
 - Komentarze w kodzie i plikach konfiguracyjnych po angielsku; dokumentacja Markdown po polsku.
 - UI: z makiety bierzemy tylko wygląd; funkcje spoza MVP (tworzenie ról, import/eksport, Pending Reviews,
   Settings, Billing, globalna wyszukiwarka, powiadomienia) pomijamy.

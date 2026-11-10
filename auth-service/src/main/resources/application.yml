@@ -8,6 +8,25 @@ server:
 spring:
   application:
     name: auth-service
+  mvc:
+    problemdetails:
+      enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Issuer is always validated against the "iss" claim. Keys are fetched from jwk-set-uri, so inside
+          # Docker the JWKS can come from http://keycloak:8080 while the issuer stays http://localhost:8080.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/mini-iam}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/mini-iam/protocol/openid-connect/certs}
+          audiences: ${KEYCLOAK_AUDIENCE:mini-iam-api}
+
+app:
+  security:
+    # Optional: also map resource_access.<client-id>.roles (Keycloak client roles). Empty = realm roles only.
+    client-id: ${KEYCLOAK_CLIENT_ROLES_CLIENT_ID:}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
 
 management:
   endpoints:

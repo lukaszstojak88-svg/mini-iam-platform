@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <!-- Used by keycloak-js check-sso: passes the auth response back to the application window. -->
+    <script>
+      parent.postMessage(location.href, location.origin);
+    </script>
+  </body>
+</html>

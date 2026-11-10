@@ -1,0 +1,47 @@
+.page-header {
+  margin-bottom: 24px;
+
+  h1 {
+    margin: 0 0 4px;
+    font-size: 1.75rem;
+  }
+
+  p {
+    margin: 0;
+    color: #64748b;
+  }
+}
+
+.center {
+  display: flex;
+  justify-content: center;
+  padding: 48px;
+}
+
+mat-card {
+  max-width: 720px;
+}
+
+.error {
+  border-left: 4px solid #dc2626;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  row-gap: 12px;
+  margin: 16px 0 0;
+
+  dt {
+    color: #64748b;
+  }
+
+  dd {
+    margin: 0;
+  }
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+}

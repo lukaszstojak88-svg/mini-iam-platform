@@ -1,0 +1,52 @@
+<header class="page-header">
+  <h1>Dashboard</h1>
+  <p>Informacje o zalogowanym użytkowniku i jego uprawnieniach.</p>
+</header>
+
+@switch (state()) {
+  @case ('loading') {
+    <div class="center" data-testid="loading">
+      <mat-progress-spinner mode="indeterminate" diameter="40" />
+    </div>
+  }
+  @case ('error') {
+    <mat-card class="error" data-testid="error">
+      <mat-card-content>
+        <p>Nie udało się pobrać danych użytkownika. Sprawdź, czy auth-service działa, i spróbuj ponownie.</p>
+      </mat-card-content>
+      <mat-card-actions>
+        <button mat-button type="button" (click)="load()">Spróbuj ponownie</button>
+      </mat-card-actions>
+    </mat-card>
+  }
+  @case ('loaded') {
+    @if (user(); as u) {
+      <mat-card data-testid="profile">
+        <mat-card-header>
+          <mat-card-title>{{ u.firstName }} {{ u.lastName }}</mat-card-title>
+          <mat-card-subtitle>{{ u.username }}</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <dl class="details">
+            <dt>E-mail</dt>
+            <dd>{{ u.email ?? '—' }}</dd>
+            <dt>Keycloak ID</dt>
+            <dd class="mono">{{ u.userId }}</dd>
+            <dt>Role</dt>
+            <dd>
+              @if (u.roles.length > 0) {
+                <mat-chip-set aria-label="Role użytkownika">
+                  @for (role of u.roles; track role) {
+                    <mat-chip>{{ role }}</mat-chip>
+                  }
+                </mat-chip-set>
+              } @else {
+                <span>Brak ról aplikacyjnych</span>
+              }
+            </dd>
+          </dl>
+        </mat-card-content>
+      </mat-card>
+    }
+  }
+}

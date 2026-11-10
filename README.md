@@ -7,8 +7,8 @@ w architekturze mikroserwisowej (Spring Boot 3.5 + Keycloak 26 + PostgreSQL + EL
 - Plan etapów: [`docs/implementation-plan.md`](docs/implementation-plan.md)
 - Architektura: [`docs/architecture.md`](docs/architecture.md)
 
-> **Status:** Etap 1 (repozytorium i infrastruktura). Serwisy startują, ale nie mają jeszcze
-> logiki biznesowej ani zabezpieczeń JWT (Etap 2+).
+> **Status:** Etap 2 (bezpieczeństwo). Logowanie przez Keycloak (OIDC + PKCE) w Angularze, weryfikacja JWT
+> w każdym serwisie, endpoint `GET /api/auth/me`. Logika biznesowa (użytkownicy, role, audyt) — Etapy 3–5.
 
 ## 1. Wymagania lokalne
 
@@ -18,6 +18,7 @@ w architekturze mikroserwisowej (Spring Boot 3.5 + Keycloak 26 + PostgreSQL + EL
 | Docker + Docker Compose | Docker Desktop z Compose ≥ 2.20 (wymagane `include`) |
 | RAM dla Dockera | ~4 GB z profilem `elk`, ~2 GB bez |
 | Maven | nie jest wymagany — używaj `./mvnw` |
+| Node.js | 22.22+, 24.15+ lub 26+ (frontend Angular 22) |
 
 ## 2. Konfiguracja
 
@@ -53,12 +54,29 @@ USER_SERVICE_DB_PASSWORD=<z .env> ./mvnw -pl user-service spring-boot:run
 
 Poza Dockerem logi są w czytelnym formacie tekstowym; w kontenerze — JSON/ECS (`LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`).
 
-Frontend (Angular) powstanie w Etapie 6.
+Frontend (Angular SPA) uruchamiany osobno — najprościej skryptem (Git Bash / Linux / macOS):
+
+```bash
+./scripts/start-frontend.sh                 # sprawdza backend, w razie potrzeby npm ci, potem ng serve
+./scripts/start-frontend.sh --with-backend  # dodatkowo docker compose up -d --build i czekanie na Keycloak
+```
+
+lub ręcznie, przy działającym Compose:
+
+```bash
+cd frontend/mini-iam-ui
+npm ci
+npm start          # http://localhost:4200
+```
+
+Otwórz http://localhost:4200 — aplikacja przekieruje do logowania w Keycloak (Authorization Code + PKCE),
+po zalogowaniu jako `admin` dashboard pokaże dane i role zwrócone przez `GET /api/auth/me`.
 
 ## 4. Adresy
 
 | Usługa | Adres |
 |---|---|
+| Frontend (Angular, `npm start`) | http://localhost:4200 |
 | user-service | http://localhost:8081 (health: `/actuator/health`) |
 | auth-service | http://localhost:8082 |
 | audit-service | http://localhost:8083 |
@@ -90,7 +108,35 @@ Konfiguracja realmu:
   role przypisane w scope mappings);
 - czas życia access tokena: 5 minut.
 
-## 6. Logi i śledzenie żądań (ELK)
+### Dodatkowe konta testowe (inne role)
+
+Konsola Keycloak → realm `mini-iam` → **Users** → *Create user* (np. `manager1`) → zakładka **Credentials**
+(ustaw hasło, `Temporary: off`) → **Role mapping** → *Assign role* → *Filter by realm roles* → `MANAGER`
+lub `AUDITOR`. Rola `USER` jest nadawana automatycznie. Docelowo konta będzie tworzyć aplikacja (Etap 3).
+
+## 6. Bezpieczeństwo API
+
+- Każdy serwis to OAuth2 Resource Server: weryfikuje podpis (JWKS z Keycloak), `iss`
+  (`http://localhost:8080/realms/mini-iam`), `exp` i `aud` (`mini-iam-api`).
+- Role z `realm_access.roles` są jawnie mapowane na `ROLE_<NAZWA>`; wbudowane role Keycloak są pomijane.
+- Reguły: `/actuator/health` publiczny, `/internal/api/**` tylko `ROLE_SERVICE` (token Client Credentials
+  klienta `mini-iam-admin`), `/api/**` wymaga uwierzytelnienia (szczegółowe reguły ról — `@PreAuthorize`
+  przy endpointach), pozostałe ścieżki są blokowane.
+- 401/403 zwracane jako `application/problem+json` (RFC 9457) z nagłówkiem `X-Correlation-Id`.
+- CORS: tylko originy z `CORS_ALLOWED_ORIGINS` (domyślnie `http://localhost:4200`).
+
+Sprawdzenie z linii poleceń (token serwisowy):
+
+```bash
+set -a; . ./.env; set +a
+TOKEN=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-admin \
+  -d "client_secret=$MINI_IAM_ADMIN_CLIENT_SECRET" \
+  http://localhost:8080/realms/mini-iam/protocol/openid-connect/token | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
+curl -i http://localhost:8082/api/auth/me                                  # 401
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8082/api/auth/me   # 200
+```
+
+## 7. Logi i śledzenie żądań (ELK)
 
 Każdy serwis przyjmuje lub generuje nagłówek `X-Correlation-Id`, zwraca go w odpowiedzi i dodaje
 do każdego wpisu logu jako `correlationId` (spec §16).
@@ -107,21 +153,27 @@ curl -i -H "X-Correlation-Id: demo-123" http://localhost:8081/actuator/health
 W Kibanie: **Discover** → data view *Mini IAM logs* → zapytanie `correlationId : "demo-123"`.
 Żądania do `/actuator/**` nie generują logu zakończenia (healthchecki), ale też dostają `X-Correlation-Id`.
 
-## 7. Testy
+## 8. Testy
 
 ```bash
-./mvnw test      # testy jednostkowe
+./mvnw test      # testy jednostkowe i MockMvc (reguły 401/403, CORS, converter ról)
 ./mvnw verify    # + testy integracyjne (*IT) z Testcontainers - wymaga działającego Dockera
+cd frontend/mini-iam-ui && npm test -- --watch=false   # testy Angular (Vitest)
 ```
 
-Testy integracyjne uruchamiają PostgreSQL w Testcontainers i weryfikują migracje Liquibase na czystej bazie.
-Nie wymagają uruchomionego Compose ani ELK.
+Testy integracyjne uruchamiają PostgreSQL i Keycloak (z tym samym realm importem co Compose)
+w Testcontainers: migracje Liquibase na czystej bazie oraz walidacja prawdziwych tokenów
+(poprawny token, zły issuer, brak audience, zmieniony podpis). Nie wymagają uruchomionego Compose ani ELK.
 
-## 8. Typowe problemy
+## 9. Typowe problemy
 
 | Problem | Rozwiązanie |
 |---|---|
 | `PKIX path building failed` przy `./mvnw` (Windows, proxy/antywirus podmieniający certyfikaty) | `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT` (PowerShell: `$env:MAVEN_OPTS="-Djavax.net.ssl.trustStoreType=Windows-ROOT"`) |
+| `npm ci`: `can only install with an existing package-lock.json` (`EUSAGE`) | Uruchamiasz npm w złym katalogu — komendy npm tylko w `frontend/mini-iam-ui` (albo użyj `./scripts/start-frontend.sh`). |
+| `npm ci` / `npx` kończy się błędem certyfikatu (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) | `NODE_OPTIONS=--use-system-ca` (używa magazynu certyfikatów systemu) |
+| Frontend: pętla przekierowań lub 401 po zalogowaniu | Keycloak i serwisy muszą działać (`docker compose ps`); issuer w tokenie to `http://localhost:8080/...` — otwieraj Keycloak przez `localhost`, nie `127.0.0.1`. |
+| Zmiana roli nie jest widoczna od razu | Role są w tokenie; zmiana obowiązuje po odświeżeniu tokena (do 5 min) lub ponownym zalogowaniu (spec §11.2). |
 | `required variable ... is missing a value` przy `docker compose` | Brak `.env` lub brakująca zmienna — skopiuj `.env.example` do `.env`. |
 | Testy `*IT` nie startują (`Could not find a valid Docker environment`) | Uruchom Docker Desktop. |
 | Admin API Keycloak zwraca 401 dla service account | Token musi zawierać scope `kc-admin-api` (Keycloak ≥ 26.8.2) — jest w realm imporcie; przy starym wolumenie zrób `docker compose down -v`. |

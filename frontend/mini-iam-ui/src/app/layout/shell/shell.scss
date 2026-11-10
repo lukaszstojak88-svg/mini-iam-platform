@@ -1,0 +1,68 @@
+// Basic layout following docs/gui.jpg (dark sidebar, light content); full theme in Stage 6.
+.shell {
+  height: 100vh;
+}
+
+.sidebar {
+  width: 240px;
+  background: #111827;
+  color: #e5e7eb;
+  border-right: none;
+  // Square corners (Material 3 rounds the drawer edge by default).
+  --mat-sidenav-container-shape: 0;
+
+  // The drawer must never scroll horizontally.
+  ::ng-deep .mat-drawer-inner-container {
+    overflow-x: hidden;
+  }
+
+  .brand {
+    padding: 20px 24px;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  // Horizontal spacing lives on the list, not on items: a 100%-wide item with side margins
+  // overflowed the drawer and produced a horizontal scrollbar.
+  mat-nav-list {
+    padding: 0 12px;
+    box-sizing: border-box;
+  }
+
+  a[mat-list-item] {
+    --mat-list-list-item-label-text-color: #cbd5e1;
+    --mat-list-list-item-leading-icon-color: #cbd5e1;
+    border-radius: 8px;
+  }
+
+  a.active {
+    background: #4f46e5;
+    --mat-list-list-item-label-text-color: #ffffff;
+    --mat-list-list-item-leading-icon-color: #ffffff;
+  }
+}
+
+.topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  gap: 16px;
+
+  .spacer {
+    flex: 1;
+  }
+
+  .user {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.95rem;
+  }
+}
+
+.content {
+  padding: 24px 32px;
+  background: #f8fafc;
+  min-height: calc(100vh - 64px);
+  box-sizing: border-box;
+}
