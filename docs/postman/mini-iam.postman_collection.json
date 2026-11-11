@@ -1,0 +1,1103 @@
+{
+  "info": {
+    "_postman_id": "843e767e-d412-5c4f-b8e1-35af193663fc",
+    "name": "Mini IAM Platform",
+    "description": "Requesty API Mini IAM (user-service :8081, auth-service :8082, audit-service :8083). Instrukcja: `docs/postman/README.md`.\n\nDomyślne uwierzytelnienie kolekcji: OAuth 2.0 Authorization Code + PKCE (klient publiczny `mini-iam-frontend`). Każde żądanie dostaje `X-Correlation-Id` (skrypt kolekcji), żeby można je było odnaleźć w logach i Kibanie.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "grant_type",
+        "value": "authorization_code_with_pkce",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/auth",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "{{frontendClientId}}",
+        "type": "string"
+      },
+      {
+        "key": "redirect_uri",
+        "value": "{{redirectUri}}",
+        "type": "string"
+      },
+      {
+        "key": "useBrowser",
+        "value": false,
+        "type": "boolean"
+      },
+      {
+        "key": "scope",
+        "value": "openid",
+        "type": "string"
+      },
+      {
+        "key": "challengeAlgorithm",
+        "value": "S256",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "body",
+        "type": "string"
+      },
+      {
+        "key": "tokenName",
+        "value": "mini-iam user token",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Correlation id for tracing in logs (spec §16.2): keep an explicit header, otherwise generate one.",
+          "if (!pm.request.headers.has('X-Correlation-Id')) {",
+          "    pm.request.headers.add({ key: 'X-Correlation-Id', value: 'postman-' + Date.now() });",
+          "}",
+          "// Unique username for 'Utworzenie użytkownika' (generated once; clear the variable for a new one).",
+          "if (!pm.environment.get('newUsername')) {",
+          "    pm.environment.set('newUsername', 'john.doe.' + Date.now());",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Tokeny",
+      "description": "Token użytkownika (Authorization Code + PKCE) jest skonfigurowany na poziomie kolekcji: zakładka *Authorization* kolekcji → *Get New Access Token* → logowanie (np. `admin`) → *Use Token*. Token serwisowy (Client Credentials) pobiera request poniżej.",
+      "item": [
+        {
+          "id": "0c50c903-7d21-5a02-9eff-350f949a1c56",
+          "name": "Token serwisowy (client_credentials)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Token klienta technicznego `mini-iam-admin` (rola `SERVICE`, bez ról aplikacyjnych), zapisywany w zmiennej `serviceToken`. Sekret: zmienna środowiska `adminClientSecret` = `MINI_IAM_ADMIN_CLIENT_SECRET` z `.env`.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{adminClientId}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{adminClientSecret}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.environment.set('serviceToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Health",
+      "description": "Publiczne `/actuator/health` (bez tokena). Nagłówek `X-Correlation-Id` wraca w odpowiedzi.",
+      "item": [
+        {
+          "id": "7837667c-17d2-51b4-9e2d-b6a4bdb3384b",
+          "name": "user-service health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "postman-health"
+              }
+            ],
+            "url": {
+              "raw": "{{userServiceUrl}}/actuator/health",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Healthcheck user-service.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "f1ebf8fe-5c2c-5280-a285-0836366b91f9",
+          "name": "auth-service health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "postman-health"
+              }
+            ],
+            "url": {
+              "raw": "{{authServiceUrl}}/actuator/health",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Healthcheck auth-service.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "97dd3fed-d1ee-5af4-a402-adacb7908d00",
+          "name": "audit-service health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "postman-health"
+              }
+            ],
+            "url": {
+              "raw": "{{auditServiceUrl}}/actuator/health",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Healthcheck audit-service.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 user-service",
+      "description": "Konta i profile użytkowników (spec §6.1). `{{userId}}` = lokalne `id` profilu, `{{keycloakId}}` = id konta w Keycloak (używane przez auth-service). *Utworzenie użytkownika* zapisuje oba w zmiennych środowiska.",
+      "item": [
+        {
+          "id": "730aff28-9789-58d6-89bb-6b62db2832b8",
+          "name": "Mój profil",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users/me",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me"
+              ]
+            },
+            "description": "Każdy zalogowany. Konta spoza aplikacji dostają profil just-in-time. Ustawia `myKeycloakId`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.environment.set('myKeycloakId', pm.response.json().keycloakId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "06bdf50d-2bb3-55ec-b5af-ab7db8faeeda",
+          "name": "Edycja mojego profilu",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users/me",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me"
+              ]
+            },
+            "description": "ADMIN, MANAGER, USER. Zmiana e-maila ustawia `emailVerified=false` w Keycloak.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"firstName\": \"Admin\",\n  \"lastName\": \"Mini IAM\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "4778f0c9-2d63-5115-a843-e86a6a76d31c",
+          "name": "Lista użytkowników",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users?page=0&size=20&sort=username,asc",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "sort",
+                  "value": "username,asc"
+                },
+                {
+                  "key": "search",
+                  "value": "john",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "ADMIN, MANAGER. `size` ≤ 100; sortowanie tylko po: username, email, firstName, lastName, enabled, createdAt, updatedAt."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "d54d2a60-2d89-5a3e-9818-73a4bbe84a77",
+          "name": "Utworzenie użytkownika",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "ADMIN, MANAGER. Konto w Keycloak z hasłem tymczasowym + lokalny profil. 409 `USERNAME_OR_EMAIL_TAKEN` przy duplikacie. Zapisuje `userId` i `keycloakId`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{newUsername}}\",\n  \"email\": \"{{newUsername}}@example.com\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"temporaryPassword\": \"Temp-Pass-123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "const u = pm.response.json();",
+                  "pm.environment.set('userId', u.id);",
+                  "pm.environment.set('keycloakId', u.keycloakId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "7d6377d2-26dc-5e24-ae7a-ea90e71a6ab7",
+          "name": "Szczegóły użytkownika",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users/{{userId}}",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "ADMIN, MANAGER. Status `enabled` wyrównywany z Keycloak."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "60d0438e-3ef6-53b8-a604-5d4389814210",
+          "name": "Edycja użytkownika",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users/{{userId}}",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "ADMIN, MANAGER (MANAGER nie edytuje kont ADMIN → 403 `ADMIN_ACCOUNT_PROTECTED`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newUsername}}@example.com\",\n  \"firstName\": \"Johnny\",\n  \"lastName\": \"Doe\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "f88dd2fd-b54b-5ed9-b7b4-d23f5f356bd3",
+          "name": "Dezaktywacja",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users/{{userId}}/status",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}",
+                "status"
+              ]
+            },
+            "description": "ADMIN. Ostatniego aktywnego administratora nie można dezaktywować (409 `LAST_ADMIN`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "566d5f35-eeab-51ca-a5f5-2cc3637b60fc",
+          "name": "Aktywacja",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users/{{userId}}/status",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}",
+                "status"
+              ]
+            },
+            "description": "ADMIN.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 auth-service",
+      "description": "Role realmu w Keycloak (spec §6.2). `{userId}` w ścieżce = **keycloakId**. Przypisywalne: `ADMIN`, `MANAGER`, `AUDITOR`; nie można zmieniać własnych ról.",
+      "item": [
+        {
+          "id": "dcab5b91-bdc4-5fb8-9754-82f8e7ce3d01",
+          "name": "Kim jestem (z tokena)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/auth/me",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Każdy zalogowany. Dane i role aplikacyjne z tokena (nowe role widoczne po odświeżeniu tokena)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "2ba18c4d-9b9e-5c11-a688-47e3440ba985",
+          "name": "Lista ról",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/roles",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "roles"
+              ]
+            },
+            "description": "ADMIN, MANAGER. `{name, description, assignable}`; bez `SERVICE`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "8e039194-8469-5d03-b5ca-d111c681ac0c",
+          "name": "Moje role",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/users/{{myKeycloakId}}/roles",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{myKeycloakId}}",
+                "roles"
+              ]
+            },
+            "description": "Każdy zalogowany — własne role (najpierw *Mój profil*, który ustawia `myKeycloakId`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "ba05240c-c214-5cc9-af33-028f17f07dc8",
+          "name": "Role użytkownika",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/users/{{keycloakId}}/roles",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{keycloakId}}",
+                "roles"
+              ]
+            },
+            "description": "ADMIN (pozostali tylko własne). Efektywne role aplikacyjne."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "1caa07dc-e25c-5683-8b6d-51714ac0a12d",
+          "name": "Przypisanie roli",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/users/{{keycloakId}}/roles",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{keycloakId}}",
+                "roles"
+              ]
+            },
+            "description": "ADMIN. 200 + aktualne role; 409 `ROLE_ALREADY_ASSIGNED`, 400 `ROLE_NOT_ASSIGNABLE`, 403 `SELF_ROLE_CHANGE` / `SERVICE_ACCOUNT_PROTECTED`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleName\": \"{{roleName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "0ce6150a-6ee1-54f0-a7f1-7febeafd5cf7",
+          "name": "Odebranie roli",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/users/{{keycloakId}}/roles/{{roleName}}",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{keycloakId}}",
+                "roles",
+                "{{roleName}}"
+              ]
+            },
+            "description": "ADMIN. 204; 404 `ROLE_NOT_ASSIGNED`, 409 `LAST_ADMIN` (ostatni aktywny administrator)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Bezpieczeństwo (negatywne)",
+      "description": "Oczekiwane odmowy dostępu (spec §12.3). Część requestów wymaga tokena serwisowego z folderu *00 Tokeny*, pozostałe — tokena ADMIN z kolekcji.",
+      "item": [
+        {
+          "id": "faf0aa7d-7a50-5644-801c-83e523b9cd65",
+          "name": "Bez tokena → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/auth/me",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Żądanie anonimowe: 401 + `application/problem+json`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 401', () => pm.expect(pm.response.code).to.be.oneOf([401]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "519be273-27b9-53c6-ab3f-9eea79013e77",
+          "name": "Token serwisowy na /api/auth/me → 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/auth/me",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Token Client Credentials jest poprawny, ale nie ma ról aplikacyjnych (`roles: []`).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{serviceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "a2b011d1-5e37-5ed9-b452-82f7520a11f7",
+          "name": "Token serwisowy na /api/roles → 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/roles",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "roles"
+              ]
+            },
+            "description": "Brak roli ADMIN/MANAGER.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{serviceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "8337c08c-d1dd-5923-80d1-3d7a66bb805f",
+          "name": "Token serwisowy na listę użytkowników → 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Brak roli ADMIN/MANAGER.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{serviceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "b2565285-cd88-575c-ad20-f6d60755f33c",
+          "name": "Nadanie roli USER → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/users/{{keycloakId}}/roles",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{keycloakId}}",
+                "roles"
+              ]
+            },
+            "description": "Token ADMIN. `USER` to rola bazowa — 400 `ROLE_NOT_ASSIGNABLE`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleName\": \"USER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.expect(pm.response.code).to.be.oneOf([400]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "228059d4-0ea5-5591-98ef-1a3d0d912ef8",
+          "name": "Odebranie sobie ADMIN → 403",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{authServiceUrl}}/api/users/{{myKeycloakId}}/roles/ADMIN",
+              "host": [
+                "{{authServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{myKeycloakId}}",
+                "roles",
+                "ADMIN"
+              ]
+            },
+            "description": "Token ADMIN. 403 `SELF_ROLE_CHANGE`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Sprzątanie",
+      "description": "Na końcu, żeby requesty z folderów 03-04 miały istniejące konto `{{keycloakId}}`.",
+      "item": [
+        {
+          "id": "33c7d6c5-4c06-5b74-b6e1-703dd46b0cc0",
+          "name": "Usunięcie użytkownika",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{userServiceUrl}}/api/users/{{userId}}",
+              "host": [
+                "{{userServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "ADMIN. Usuwa konto w Keycloak i profil (`{{userId}}` z *Utworzenia użytkownika*). Ostatniego aktywnego administratora nie można usunąć (409 `LAST_ADMIN`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', () => pm.expect(pm.response.code).to.be.oneOf([204]));",
+                  "pm.environment.unset('newUsername');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

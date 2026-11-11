@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** auth-service has no database of its own (spec §8.3) - the context starts without a DataSource. */
-@SpringBootTest
+@SpringBootTest(properties = "spring.security.oauth2.client.registration.keycloak-admin.client-secret=unused-in-this-test")
 @AutoConfigureMockMvc
 class AuthServiceApplicationIT {
 

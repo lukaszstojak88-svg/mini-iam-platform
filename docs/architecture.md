@@ -38,4 +38,6 @@ user/auth/audit-service ── stdout JSON/ECS ──> Filebeat ──> Logstash
 
 `CorrelationIdFilter` w każdym serwisie (osobna kopia — brak współdzielonego modułu): przyjmuje poprawny
 `X-Correlation-Id` (`[A-Za-z0-9_-]{1,100}`) lub generuje UUID, umieszcza go w MDC (`correlationId`)
-i w nagłówku odpowiedzi. Propagacja przez Feign — Etap 4/5.
+i w nagłówku odpowiedzi. Propagacja: `CorrelationIdRequestInterceptor` (Feign) dodaje bieżący `correlationId`
+z MDC do każdego wywołania serwis–serwis (poza kontekstem żądania generuje nowy UUID). Klient Feign
+auth-service → audit-service istnieje od Etapu 4; wysyłanie zdarzeń — Etap 5.

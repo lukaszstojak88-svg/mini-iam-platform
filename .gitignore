@@ -23,3 +23,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Session handoff notes (local working state, not project documentation)
+session-logs/

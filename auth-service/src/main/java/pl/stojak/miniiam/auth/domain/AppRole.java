@@ -19,7 +19,16 @@ public enum AppRole {
         if (authority == null || !authority.startsWith(AUTHORITY_PREFIX)) {
             return Optional.empty();
         }
-        String name = authority.substring(AUTHORITY_PREFIX.length());
+        return fromName(authority.substring(AUTHORITY_PREFIX.length()));
+    }
+
+    /** Exact (case-sensitive) match of a Keycloak realm role name. */
+    public static Optional<AppRole> fromName(String name) {
         return Arrays.stream(values()).filter(role -> role.name().equals(name)).findFirst();
+    }
+
+    /** USER is the base role granted by Keycloak default roles; it cannot be assigned or removed via the API. */
+    public boolean isAssignable() {
+        return this != USER;
     }
 }

@@ -95,3 +95,9 @@ done
   (`auth-service/src/test/java/pl/stojak/miniiam/auth/KeycloakJwtValidationIT.java` jako wzorzec - realm import z
   `infrastructure/` przez `testResources`).
 - Uruchom: `./mvnw verify` (na tej maszynie z `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT`).
+
+## 9. Kolekcja Postman
+
+Nowy lub zmieniony endpoint = aktualizacja `docs/postman/mini-iam.postman_collection.json` (request w folderze
+serwisu, opis ról, test oczekiwanego statusu, ewentualnie zmienna środowiska). Bez sekretów w plikach
+środowiska; instrukcja w `docs/postman/README.md`.

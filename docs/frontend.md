@@ -115,6 +115,15 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
   `USER` pokazany jako rola bazowa bez możliwości odebrania. Akcje na własnym koncie zablokowane
   (użytkownik nie zmienia własnych ról). Błąd „ostatni administrator” pokazany czytelnym komunikatem.
   Tworzenie ról, szablony i import CSV — poza zakresem.
+  Kontrakt auth-service (Etap 4):
+  - `GET /api/roles` (ADMIN, MANAGER) → `[{name, description, assignable}]` w kolejności ADMIN, MANAGER, USER,
+    AUDITOR; o tym, czy pokazać akcje przypisania/odebrania, decyduje `assignable` (`false` dla `USER`);
+  - `GET /api/users/{keycloakId}/roles` (ADMIN; inni tylko własne) → `{userId, roles: [...]}` (efektywne role);
+  - `POST /api/users/{keycloakId}/roles` z `{"roleName": "MANAGER"}` → **200** z aktualnym `{userId, roles}` —
+    UI odświeża chipy z odpowiedzi, bez dodatkowego GET; `DELETE .../roles/{roleName}` → **204** (UI usuwa chip);
+  - zmiana ról innej osoby nie zmienia tokena zalogowanego ADMIN-a; użytkownik zobaczy nowe role po odświeżeniu
+    swojego tokena (do 5 min) — UI może to zaznaczyć w komunikacie sukcesu;
+  - konta serwisowe nie są użytkownikami aplikacji — 403 `SERVICE_ACCOUNT_PROTECTED` pokazujemy jako komunikat.
 - **Audit Logs** — tabela tylko do odczytu: czas (lokalna strefa przeglądarki, dane w UTC), typ zdarzenia,
   aktor, użytkownik docelowy, szczegóły (rozwijane / dialog z `details` i `correlationId`). Filtry: typ zdarzenia,
   aktor, użytkownik docelowy, zakres dat; paginacja serwerowa. Brak edycji i usuwania.
@@ -129,7 +138,9 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
 - Błędy w formacie ProblemDetail (`application/problem+json`) z właściwością `code` (lista kodów user-service:
   `VALIDATION_FAILED` + `errors[{field, message}]`, `INVALID_REQUEST`, `INVALID_USER_DATA`, `USER_NOT_FOUND`,
   `USERNAME_OR_EMAIL_TAKEN`, `LAST_ADMIN`, `ADMIN_ACCOUNT_PROTECTED`, `USER_SYNC_FAILED`, `KEYCLOAK_UNAVAILABLE`,
-  `KEYCLOAK_INTEGRATION_ERROR`, `INTERNAL_ERROR`) — komunikaty UI mapujemy po `code`, a gdy go brak, po statusie:
+  `KEYCLOAK_INTEGRATION_ERROR`, `INTERNAL_ERROR`; dodatkowo auth-service: `ROLE_NOT_ASSIGNABLE`, `ROLE_NOT_FOUND`,
+  `ROLE_NOT_ASSIGNED`, `RESOURCE_NOT_FOUND`, `ROLE_ALREADY_ASSIGNED`, `SELF_ROLE_CHANGE`, `SERVICE_ACCOUNT_PROTECTED`, `AUDIT_UNAVAILABLE`,
+  `AUDIT_INTEGRATION_ERROR`) — komunikaty UI mapujemy po `code`, a gdy go brak, po statusie:
   - 401 → ponowne logowanie (`httpErrorInterceptor`), 403 → `/access-denied`;
   - 400 → błędy walidacji przy polach formularza; 404 → „Nie znaleziono”; 409 → komunikat konfliktu;
   - 502/503/0 → „Usługa chwilowo niedostępna”;

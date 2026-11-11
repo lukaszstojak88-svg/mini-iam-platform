@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Validates real Keycloak tokens end-to-end (spec §5.3, §11.1): signature, issuer and audience.
  * Uses the same realm import as docker compose.
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.security.oauth2.client.registration.keycloak-admin.client-secret=unused-in-this-test")
 @AutoConfigureMockMvc
 @Testcontainers
 class KeycloakJwtValidationIT {

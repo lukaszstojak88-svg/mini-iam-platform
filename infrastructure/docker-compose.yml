@@ -115,6 +115,12 @@ services:
       KEYCLOAK_ISSUER_URI: http://localhost:${KEYCLOAK_PORT:-8080}/realms/mini-iam
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/mini-iam/protocol/openid-connect/certs
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+      # Keycloak Admin REST API (realm role mappings) via the technical client mini-iam-admin (Client Credentials)
+      KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/mini-iam/protocol/openid-connect/token
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${MINI_IAM_ADMIN_CLIENT_SECRET}
+      # Feign client of audit-service (service-to-service, spec §7)
+      AUDIT_SERVICE_URL: http://audit-service:8083
     ports:
       - "127.0.0.1:${AUTH_SERVICE_PORT:-8082}:8082"
     labels:

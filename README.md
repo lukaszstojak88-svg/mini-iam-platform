@@ -6,10 +6,12 @@ w architekturze mikroserwisowej (Spring Boot 3.5 + Keycloak 26 + PostgreSQL + EL
 - Specyfikacja: [`docs/project-spec.md`](docs/project-spec.md)
 - Plan etapów: [`docs/implementation-plan.md`](docs/implementation-plan.md)
 - Architektura: [`docs/architecture.md`](docs/architecture.md)
+- Kolekcja Postman z requestami API: [`docs/postman/`](docs/postman/README.md)
 
-> **Status:** Etap 3 (User Service). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
-> zarządzanie użytkownikami w Keycloak i lokalnym profilu (`/api/users`). Role (Etap 4), audyt (Etap 5) i widoki
-> UI do zarządzania (Etap 6) — w kolejnych etapach.
+> **Status:** Etap 4 (Auth Service). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
+> zarządzanie użytkownikami w Keycloak i lokalnym profilu (`/api/users`), odczyt i przypisywanie ról
+> (`/api/roles`, `/api/users/{keycloakId}/roles`). Audyt (Etap 5) i widoki UI do zarządzania (Etap 6) —
+> w kolejnych etapach.
 
 ## 1. Wymagania lokalne
 
@@ -113,7 +115,8 @@ Konfiguracja realmu:
 
 Konsola Keycloak → realm `mini-iam` → **Users** → *Create user* (np. `manager1`) → zakładka **Credentials**
 (ustaw hasło, `Temporary: off`) → **Role mapping** → *Assign role* → *Filter by realm roles* → `MANAGER`
-lub `AUDITOR`. Rola `USER` jest nadawana automatycznie. Docelowo konta będzie tworzyć aplikacja (Etap 3).
+lub `AUDITOR`. Rola `USER` jest nadawana automatycznie. Alternatywnie przez API: konto tworzy user-service
+(`POST /api/users`, sekcja 7), a rolę nadaje auth-service (`POST /api/users/{keycloakId}/roles`, sekcja 8).
 
 ## 6. Bezpieczeństwo API
 
@@ -184,7 +187,49 @@ Zachowanie:
   mogą obie przejść; konto bez imienia/nazwiska może zostać poproszone przez Keycloak o ich uzupełnienie przy
   logowaniu (domyślny profil użytkownika Keycloak).
 
-## 8. Logi i śledzenie żądań (ELK)
+## 8. Role (auth-service)
+
+API `http://localhost:8082` (spec §6.2). Role są realm roles w Keycloak — auth-service nie ma bazy ani cache,
+każdy odczyt i zmiana idzie do Keycloak Admin API (klient `mini-iam-admin`). `{userId}` to **`keycloakId`**
+(pole `keycloakId` z user-service), nie lokalne `id` profilu.
+
+| Endpoint | Role | Odpowiedź |
+|---|---|---|
+| `GET /api/roles` | ADMIN, MANAGER | `[{name, description, assignable}]` — `ADMIN`, `MANAGER`, `USER` (`assignable=false`), `AUDITOR`; bez `SERVICE` |
+| `GET /api/users/{userId}/roles` | ADMIN; pozostali tylko własne | `{userId, roles}` — efektywne role aplikacyjne |
+| `POST /api/users/{userId}/roles` `{"roleName":"MANAGER"}` | ADMIN | 200 + aktualne `{userId, roles}` |
+| `DELETE /api/users/{userId}/roles/{roleName}` | ADMIN | 204 |
+| `GET /api/auth/me` | każdy zalogowany | dane i role z tokena |
+
+```bash
+curl -X POST http://localhost:8082/api/users/<keycloakId>/roles -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"roleName":"MANAGER"}'
+curl http://localhost:8082/api/users/<keycloakId>/roles -H "Authorization: Bearer $TOKEN"
+curl -X DELETE http://localhost:8082/api/users/<keycloakId>/roles/MANAGER -H "Authorization: Bearer $TOKEN"
+```
+
+Reguły i kody błędów (ProblemDetail z polem `code`):
+
+| Sytuacja | HTTP / `code` |
+|---|---|
+| rola spoza `ADMIN`/`MANAGER`/`AUDITOR` (`USER`, `SERVICE`, nieznana; nazwy wielkimi literami) | 400 `ROLE_NOT_ASSIGNABLE` |
+| niepoprawny `userId` / puste `roleName` | 400 `VALIDATION_FAILED` |
+| zmiana własnych ról | 403 `SELF_ROLE_CHANGE` |
+| konto serwisowe (np. `service-account-mini-iam-admin`) | 403 `SERVICE_ACCOUNT_PROTECTED` |
+| użytkownik nie istnieje / rola nie istnieje w realmie | 404 `USER_NOT_FOUND` / `ROLE_NOT_FOUND` |
+| odebranie roli, której użytkownik nie ma bezpośrednio | 404 `ROLE_NOT_ASSIGNED` |
+| rola już przypisana | 409 `ROLE_ALREADY_ASSIGNED` |
+| odebranie `ADMIN` ostatniemu aktywnemu administratorowi | 409 `LAST_ADMIN` |
+| Keycloak niedostępny / odrzuca klienta technicznego | 503 `KEYCLOAK_UNAVAILABLE` / 502 `KEYCLOAK_INTEGRATION_ERROR` |
+
+- Zmiana ról jest widoczna w tokenie użytkownika dopiero po jego odświeżeniu (do 5 min) lub ponownym logowaniu.
+- **Feign i audyt:** auth-service ma gotowego klienta Feign do audit-service (`AUDIT_SERVICE_URL`, timeouty
+  2 s/5 s, bez retry, token Client Credentials z rolą `SERVICE`, propagacja `X-Correlation-Id`). Zdarzenia
+  `ROLE_ASSIGNED`/`ROLE_REMOVED` będą wysyłane od Etapu 5 (gdy audit-service udostępni endpoint).
+- **Znane ograniczenia:** role przypisywane wyłącznie bezpośrednio (bez grup); sprawdzenie ostatniego administratora
+  nie jest atomowe ze zmianą (dwa równoczesne odebrania `ADMIN` dwóm ostatnim adminom mogą obie przejść).
+
+## 9. Logi i śledzenie żądań (ELK)
 
 Każdy serwis przyjmuje lub generuje nagłówek `X-Correlation-Id`, zwraca go w odpowiedzi i dodaje
 do każdego wpisu logu jako `correlationId` (spec §16).
@@ -201,7 +246,7 @@ curl -i -H "X-Correlation-Id: demo-123" http://localhost:8081/actuator/health
 W Kibanie: **Discover** → data view *Mini IAM logs* → zapytanie `correlationId : "demo-123"`.
 Żądania do `/actuator/**` nie generują logu zakończenia (healthchecki), ale też dostają `X-Correlation-Id`.
 
-## 9. Testy
+## 10. Testy
 
 ```bash
 ./mvnw test      # testy jednostkowe i MockMvc (reguły 401/403, CORS, converter ról)
@@ -212,9 +257,13 @@ cd frontend/mini-iam-ui && npm test -- --watch=false   # testy Angular (Vitest)
 Testy integracyjne uruchamiają PostgreSQL i Keycloak (z tym samym realm importem co Compose)
 w Testcontainers: migracje Liquibase na czystej bazie, walidacja prawdziwych tokenów
 (poprawny token, zły issuer, brak audience, zmieniony podpis) oraz pełny cykl życia użytkownika w user-service
-(tworzenie w Keycloak, duplikaty, edycja, status, ostatni admin, usuwanie, profil just-in-time). Nie wymagają uruchomionego Compose ani ELK.
+(tworzenie w Keycloak, duplikaty, edycja, status, ostatni admin, usuwanie, profil just-in-time) i zarządzanie
+rolami w auth-service (przypisanie/odebranie w Keycloak, reguły biznesowe, prawdziwe tokeny użytkowników:
+po nadaniu `MANAGER` token go zawiera, a `MANAGER`/`USER` dostają 403 przy zmianie ról). Klient Feign do
+audit-service jest testowany na lokalnym serwerze HTTP (nagłówki, brak retry, timeout, mapowanie błędów).
+Nie wymagają uruchomionego Compose ani ELK.
 
-## 10. Typowe problemy
+## 11. Typowe problemy
 
 | Problem | Rozwiązanie |
 |---|---|
@@ -223,7 +272,9 @@ w Testcontainers: migracje Liquibase na czystej bazie, walidacja prawdziwych tok
 | `npm ci` / `npx` kończy się błędem certyfikatu (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) | `NODE_OPTIONS=--use-system-ca` (używa magazynu certyfikatów systemu) |
 | Frontend: pętla przekierowań lub 401 po zalogowaniu | Keycloak i serwisy muszą działać (`docker compose ps`); issuer w tokenie to `http://localhost:8080/...` — otwieraj Keycloak przez `localhost`, nie `127.0.0.1`. |
 | Zmiana roli nie jest widoczna od razu | Role są w tokenie; zmiana obowiązuje po odświeżeniu tokena (do 5 min) lub ponownym zalogowaniu (spec §11.2). |
-| user-service: 502 `KEYCLOAK_INTEGRATION_ERROR` | Klient `mini-iam-admin` odrzucony przez Keycloak — sprawdź, czy `MINI_IAM_ADMIN_CLIENT_SECRET` w `.env` jest taki sam jak przy imporcie realmu (zmiana sekretu wymaga `docker compose down -v`). |
+| auth-service nie startuje: `Could not resolve placeholder 'KEYCLOAK_ADMIN_CLIENT_SECRET'` (uruchomienie poza Dockerem) | Ustaw zmienną `KEYCLOAK_ADMIN_CLIENT_SECRET` na wartość `MINI_IAM_ADMIN_CLIENT_SECRET` z `.env` (w Compose jest przekazywana automatycznie). |
+| auth-service: 403 `SELF_ROLE_CHANGE` przy zmianie ról | Administrator nie zmienia własnych ról (spec §2) — zmianę musi wykonać inny ADMIN. |
+| user-service / auth-service: 502 `KEYCLOAK_INTEGRATION_ERROR` | Klient `mini-iam-admin` odrzucony przez Keycloak — sprawdź, czy `MINI_IAM_ADMIN_CLIENT_SECRET` w `.env` jest taki sam jak przy imporcie realmu (zmiana sekretu wymaga `docker compose down -v`). |
 | `required variable ... is missing a value` przy `docker compose` | Brak `.env` lub brakująca zmienna — skopiuj `.env.example` do `.env`. |
 | Testy `*IT` nie startują (`Could not find a valid Docker environment`) | Uruchom Docker Desktop. |
 | Admin API Keycloak zwraca 401 dla service account | Token musi zawierać scope `kc-admin-api` (Keycloak ≥ 26.8.2) — jest w realm imporcie; przy starym wolumenie zrób `docker compose down -v`. |

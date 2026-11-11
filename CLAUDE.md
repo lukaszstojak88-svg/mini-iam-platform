@@ -23,8 +23,8 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-**Etap 3 — User Service** — zrealizowany, oczekuje akceptacji użytkownika (Etapy 1–2 zaakceptowane).
-Następny: Etap 4 — Auth Service (nie zaczynać bez decyzji użytkownika).
+Etapy 1–4 zrealizowane i zaakceptowane.
+Następny: **Etap 5 — Audit Service** (nie zaczynać bez decyzji użytkownika).
 
 ## Komendy
 
@@ -74,6 +74,19 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN.
 - Błędy user-service: ProblemDetail + `code` (`ErrorCode`); lista: sort tylko po whitelist, `size` ≤ 100.
 - Audyt operacji user-service zostanie dodany w Etapie 5 (integracja Feign z audit-service).
+- auth-service: role tylko w Keycloak (bez bazy i cache), własny `KeycloakAdminClient` (wzorzec z user-service,
+  ten sam klient `mini-iam-admin`; realm bez zmian). `GET /api/roles` — ADMIN, MANAGER (`{name, description,
+  assignable}`); `GET /api/users/{userId}/roles` — ADMIN lub właściciel; `POST` (200 + aktualne role) i `DELETE`
+  (204) — tylko ADMIN. Przypisywalne tylko `ADMIN`/`MANAGER`/`AUDITOR` (dokładne nazwy), inne → 400
+  `ROLE_NOT_ASSIGNABLE`; własne role → 403 `SELF_ROLE_CHANGE`; konta serwisowe → 403 `SERVICE_ACCOUNT_PROTECTED`;
+  duplikat → 409; odebranie nieprzypisanej (bezpośrednio) → 404 `ROLE_NOT_ASSIGNED`; ostatni aktywny ADMIN → 409
+  `LAST_ADMIN`. Role przypisywane wyłącznie bezpośrednio (bez grup).
+- Feign (auth-service, Etap 4): `AuditClient` + `AuditEventPublisher` (token Client Credentials przez wspólny
+  `OAuth2AuthorizedClientManager`, `CorrelationIdRequestInterceptor`, timeouty 2 s/5 s, `Retryer.NEVER_RETRY`,
+  `AuditErrorDecoder` → 503 `AUDIT_UNAVAILABLE` / 502 `AUDIT_INTEGRATION_ERROR`). `@EnableFeignClients` w osobnej
+  konfiguracji (nie w klasie aplikacji). Wywołania audytu ról (`ROLE_ASSIGNED`/`ROLE_REMOVED`) podpinane w Etapie 5.
+- Kolekcja Postman `docs/postman/` (kolekcja v2.1 + środowisko lokalne bez sekretów, instrukcja w `README.md`):
+  przy każdym nowym lub zmienionym endpoincie aktualizuj odpowiedni request (opis ról, test oczekiwanego statusu).
 - Komentarze w kodzie i plikach konfiguracyjnych po angielsku; dokumentacja Markdown po polsku.
 - UI: z makiety bierzemy tylko wygląd; funkcje spoza MVP (tworzenie ról, import/eksport, Pending Reviews,
   Settings, Billing, globalna wyszukiwarka, powiadomienia) pomijamy.
