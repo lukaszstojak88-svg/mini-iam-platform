@@ -1,12 +1,18 @@
 <mat-sidenav-container class="shell">
   <mat-sidenav mode="side" opened class="sidebar">
-    <div class="brand">Mini IAM</div>
-    <mat-nav-list>
-      <a mat-list-item routerLink="/dashboard" routerLinkActive="active" #rla="routerLinkActive"
-         [activated]="rla.isActive">
-        <mat-icon matListItemIcon>dashboard</mat-icon>
-        <span matListItemTitle>Dashboard</span>
-      </a>
+    <div class="brand">
+      <mat-icon>admin_panel_settings</mat-icon>
+      Mini IAM
+    </div>
+    <div class="section">Menu</div>
+    <mat-nav-list aria-label="Main menu">
+      @for (item of menu; track item.path) {
+        <a mat-list-item [routerLink]="item.path" routerLinkActive="active" #rla="routerLinkActive"
+           [activated]="rla.isActive" [attr.data-testid]="'nav-' + item.path">
+          <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
+          <span matListItemTitle>{{ item.label }}</span>
+        </a>
+      }
     </mat-nav-list>
   </mat-sidenav>
 
@@ -19,12 +25,14 @@
       </span>
       <button mat-stroked-button type="button" (click)="logout()">
         <mat-icon>logout</mat-icon>
-        Wyloguj
+        Sign out
       </button>
     </mat-toolbar>
 
     <main class="content">
-      <router-outlet />
+      <div class="container">
+        <router-outlet />
+      </div>
     </main>
   </mat-sidenav-content>
 </mat-sidenav-container>

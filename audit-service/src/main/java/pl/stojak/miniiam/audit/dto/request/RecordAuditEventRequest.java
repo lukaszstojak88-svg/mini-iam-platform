@@ -13,16 +13,21 @@ import java.util.Map;
  * Event sent by a service to {@code POST /internal/api/audit-events} (spec §6.3). The correlation id is taken
  * from the {@code X-Correlation-Id} header, not from the body.
  *
- * @param actorUserId  keycloakId of the user who performed the operation
- * @param targetUserId keycloakId of the affected user (optional)
- * @param details      operation-specific data; never tokens, passwords or other credentials
+ * @param actorUserId    keycloakId of the user who performed the operation
+ * @param actorUsername  username of the actor at the time of the operation (optional)
+ * @param targetUserId   keycloakId of the affected user (optional)
+ * @param targetUsername username of the affected user at the time of the operation (optional)
+ * @param details        operation-specific data; never tokens, passwords or other credentials
  */
 public record RecordAuditEventRequest(
         @NotNull AuditEventType eventType,
         @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9_-]+") String actorUserId,
+        @Size(max = MAX_USERNAME_LENGTH) String actorUsername,
         @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9_-]+") String targetUserId,
+        @Size(max = MAX_USERNAME_LENGTH) String targetUsername,
         @NotNull @Size(max = MAX_DETAIL_ENTRIES) Map<String, Object> details,
         @NotNull Instant occurredAt) {
 
     public static final int MAX_DETAIL_ENTRIES = 20;
+    public static final int MAX_USERNAME_LENGTH = 255;
 }

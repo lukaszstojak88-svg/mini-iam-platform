@@ -1,52 +1,101 @@
-<header class="page-header">
-  <h1>Dashboard</h1>
-  <p>Informacje o zalogowanym użytkowniku i jego uprawnieniach.</p>
-</header>
+<app-page-header title="Dashboard" description="Your account, roles and profile." />
 
-@switch (state()) {
-  @case ('loading') {
-    <div class="center" data-testid="loading">
-      <mat-progress-spinner mode="indeterminate" diameter="40" />
-    </div>
-  }
-  @case ('error') {
-    <mat-card class="error" data-testid="error">
-      <mat-card-content>
-        <p>Nie udało się pobrać danych użytkownika. Sprawdź, czy auth-service działa, i spróbuj ponownie.</p>
-      </mat-card-content>
-      <mat-card-actions>
-        <button mat-button type="button" (click)="load()">Spróbuj ponownie</button>
-      </mat-card-actions>
-    </mat-card>
-  }
-  @case ('loaded') {
-    @if (user(); as u) {
-      <mat-card data-testid="profile">
-        <mat-card-header>
-          <mat-card-title>{{ u.firstName }} {{ u.lastName }}</mat-card-title>
-          <mat-card-subtitle>{{ u.username }}</mat-card-subtitle>
-        </mat-card-header>
-        <mat-card-content>
+<app-load-state [status]="status()" [message]="loadError()" (retry)="load()" />
+
+@if (status() === 'loaded') {
+  @if (identity(); as me) {
+    @if (profile(); as p) {
+      <section class="tiles">
+        <app-stat-tile icon="badge" label="Username" [value]="me.username ?? p.username" />
+        <app-stat-tile icon="verified_user" label="Roles" [value]="me.roles.length" />
+        <app-stat-tile icon="toggle_on" label="Account" [value]="p.enabled ? 'Active' : 'Inactive'" />
+      </section>
+
+      <div class="columns">
+        <section class="card card-section details-card" data-testid="profile">
+          <h2 class="card-title">Profile</h2>
           <dl class="details">
+            <dt>Name</dt>
+            <dd>{{ p.firstName }} {{ p.lastName }}</dd>
+            <dt>Username</dt>
+            <dd>{{ p.username }}</dd>
             <dt>E-mail</dt>
-            <dd>{{ u.email ?? '—' }}</dd>
-            <dt>Keycloak ID</dt>
-            <dd class="mono">{{ u.userId }}</dd>
-            <dt>Role</dt>
+            <dd>{{ p.email }}</dd>
+            <dt>Status</dt>
             <dd>
-              @if (u.roles.length > 0) {
-                <mat-chip-set aria-label="Role użytkownika">
-                  @for (role of u.roles; track role) {
+              <app-status-pill [variant]="p.enabled ? 'success' : 'danger'">{{ p.enabled ? 'Active' : 'Inactive' }}</app-status-pill>
+            </dd>
+            <dt>Keycloak ID</dt>
+            <dd class="mono">{{ me.userId }}</dd>
+            <dt>Roles</dt>
+            <dd>
+              @if (me.roles.length > 0) {
+                <mat-chip-set aria-label="Your roles">
+                  @for (role of me.roles; track role) {
                     <mat-chip>{{ role }}</mat-chip>
                   }
                 </mat-chip-set>
               } @else {
-                <span>Brak ról aplikacyjnych</span>
+                <span>No application roles</span>
               }
             </dd>
           </dl>
-        </mat-card-content>
-      </mat-card>
+          <p class="hint">Roles come from your access token; a change takes effect after the token is refreshed
+            (up to 5 minutes) or after signing in again.</p>
+        </section>
+
+        @if (canEditProfile) {
+          <section class="card card-section" data-testid="profile-form">
+            <h2 class="card-title">Edit profile</h2>
+            @if (saveError(); as error) {
+              <p class="form-error" role="alert">{{ error.message }}</p>
+            }
+            <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+              <mat-form-field appearance="outline">
+                <mat-label>E-mail</mat-label>
+                <input matInput formControlName="email" type="email" autocomplete="email" required />
+                @if (form.controls.email.hasError('required')) {
+                  <mat-error>E-mail is required.</mat-error>
+                } @else if (form.controls.email.hasError('email')) {
+                  <mat-error>Enter a valid e-mail address.</mat-error>
+                } @else if (form.controls.email.hasError('maxlength')) {
+                  <mat-error>At most 255 characters.</mat-error>
+                } @else if (form.controls.email.hasError('server')) {
+                  <mat-error>{{ form.controls.email.getError('server') }}</mat-error>
+                }
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>First name</mat-label>
+                <input matInput formControlName="firstName" autocomplete="given-name" required />
+                @if (form.controls.firstName.hasError('required') || form.controls.firstName.hasError('blank')) {
+                  <mat-error>First name is required.</mat-error>
+                } @else if (form.controls.firstName.hasError('maxlength')) {
+                  <mat-error>At most 100 characters.</mat-error>
+                } @else if (form.controls.firstName.hasError('server')) {
+                  <mat-error>{{ form.controls.firstName.getError('server') }}</mat-error>
+                }
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Last name</mat-label>
+                <input matInput formControlName="lastName" autocomplete="family-name" required />
+                @if (form.controls.lastName.hasError('required') || form.controls.lastName.hasError('blank')) {
+                  <mat-error>Last name is required.</mat-error>
+                } @else if (form.controls.lastName.hasError('maxlength')) {
+                  <mat-error>At most 100 characters.</mat-error>
+                } @else if (form.controls.lastName.hasError('server')) {
+                  <mat-error>{{ form.controls.lastName.getError('server') }}</mat-error>
+                }
+              </mat-form-field>
+              <div class="actions">
+                <button mat-button type="button" (click)="reset()" [disabled]="saving() || form.pristine">Discard</button>
+                <button mat-flat-button type="submit" [disabled]="saving() || form.pristine">
+                  {{ saving() ? 'Saving…' : 'Save' }}
+                </button>
+              </div>
+            </form>
+          </section>
+        }
+      </div>
     }
   }
 }

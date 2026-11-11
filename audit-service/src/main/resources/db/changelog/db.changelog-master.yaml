@@ -4,3 +4,6 @@ databaseChangeLog:
   - include:
       file: changes/001-create-audit-events-table.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/002-add-audit-event-usernames.yaml
+      relativeToChangelogFile: true

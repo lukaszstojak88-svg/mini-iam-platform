@@ -823,7 +823,7 @@
     },
     {
       "name": "04 audit-service",
-      "description": "Dziennik audytu (spec §6.3) — tylko odczyt, role `ADMIN` i `AUDITOR`. Zdarzenia zapisują user-service i auth-service przez `/internal/api/audit-events` (token serwisowy z rolą `SERVICE`). `actorUserId`/`targetUserId` = keycloakId. Filtry: `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie) w ISO-8601; sortowanie `occurredAt` / `eventType`, domyślnie `occurredAt,desc`; `size` > 100 → 400.",
+      "description": "Dziennik audytu (spec §6.3) — tylko odczyt, role `ADMIN` i `AUDITOR`. Zdarzenia zapisują user-service i auth-service przez `/internal/api/audit-events` (token serwisowy z rolą `SERVICE`). `actorUserId`/`targetUserId` = keycloakId, `actorUsername`/`targetUsername` = nazwy użytkowników w chwili zdarzenia (null w starszych wpisach). Filtry: `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie) w ISO-8601; sortowanie `occurredAt` / `eventType`, domyślnie `occurredAt,desc`; `size` > 100 → 400.",
       "item": [
         {
           "id": "323f2b68-81cc-5149-adcc-3a96523a4504",

@@ -48,7 +48,8 @@ class AuditEventServiceTest {
     }
 
     private static RecordAuditEventRequest request(Map<String, Object> details) {
-        return new RecordAuditEventRequest(AuditEventType.USER_UPDATED, "kc-admin", "kc-user", details, OCCURRED_AT);
+        return new RecordAuditEventRequest(AuditEventType.USER_UPDATED, "kc-admin", "admin", "kc-user", "jan",
+                details, OCCURRED_AT);
     }
 
     @Test
@@ -64,11 +65,26 @@ class AuditEventServiceTest {
         assertThat(id).isEqualTo(event.getId());
         assertThat(event.getEventType()).isEqualTo(AuditEventType.USER_UPDATED);
         assertThat(event.getActorUserId()).isEqualTo("kc-admin");
+        assertThat(event.getActorUsername()).isEqualTo("admin");
         assertThat(event.getTargetUserId()).isEqualTo("kc-user");
+        assertThat(event.getTargetUsername()).isEqualTo("jan");
         assertThat(event.getDetails()).containsEntry("changedFields", List.of("email"));
         assertThat(event.getOccurredAt()).isEqualTo(OCCURRED_AT);
         assertThat(event.getCorrelationId()).isEqualTo("corr-123");
         assertThat(event.isNew()).isTrue();
+    }
+
+    @Test
+    void recordStoresBlankUsernamesAsNull() {
+        when(repository.save(any(AuditEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.record(new RecordAuditEventRequest(AuditEventType.USER_ACTIVATED, "kc-admin", " ", "kc-user", null,
+                Map.of(), OCCURRED_AT));
+
+        ArgumentCaptor<AuditEvent> saved = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(repository).save(saved.capture());
+        assertThat(saved.getValue().getActorUsername()).isNull();
+        assertThat(saved.getValue().getTargetUsername()).isNull();
     }
 
     @Test
@@ -99,7 +115,7 @@ class AuditEventServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     void listMapsEntitiesToResponses() {
-        AuditEvent event = new AuditEvent(AuditEventType.ROLE_REMOVED, "kc-admin", "kc-user",
+        AuditEvent event = new AuditEvent(AuditEventType.ROLE_REMOVED, "kc-admin", "admin", "kc-user", "jan",
                 Map.of("roleName", "AUDITOR"), OCCURRED_AT, "corr-9");
         when(repository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(event), PageRequest.of(0, 20), 1));
@@ -109,6 +125,8 @@ class AuditEventServiceTest {
         assertThat(page.totalElements()).isEqualTo(1);
         assertThat(page.content()).singleElement().satisfies(response -> {
             assertThat(response.id()).isEqualTo(event.getId());
+            assertThat(response.actorUsername()).isEqualTo("admin");
+            assertThat(response.targetUsername()).isEqualTo("jan");
             assertThat(response.details()).containsEntry("roleName", "AUDITOR");
             assertThat(response.correlationId()).isEqualTo("corr-9");
         });

@@ -42,6 +42,14 @@ public class AuditEvent implements Persistable<UUID> {
     @Column(name = "target_user_id", length = 64)
     private String targetUserId;
 
+    /** Username of the actor at the time of the event; null for events recorded before it was stored. */
+    @Column(name = "actor_username")
+    private String actorUsername;
+
+    /** Username of the target user at the time of the event; null when unknown or there is no target. */
+    @Column(name = "target_username")
+    private String targetUsername;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "details", nullable = false)
     private Map<String, Object> details;
@@ -60,12 +68,15 @@ public class AuditEvent implements Persistable<UUID> {
         // for JPA
     }
 
-    public AuditEvent(AuditEventType eventType, String actorUserId, String targetUserId,
-                      Map<String, Object> details, Instant occurredAt, String correlationId) {
+    public AuditEvent(AuditEventType eventType, String actorUserId, String actorUsername, String targetUserId,
+                      String targetUsername, Map<String, Object> details, Instant occurredAt,
+                      String correlationId) {
         this.id = UUID.randomUUID();
         this.eventType = Objects.requireNonNull(eventType);
         this.actorUserId = Objects.requireNonNull(actorUserId);
+        this.actorUsername = actorUsername;
         this.targetUserId = targetUserId;
+        this.targetUsername = targetUsername;
         // LinkedHashMap: keeps key order and allows JSON null values (Map.copyOf would reject them).
         this.details = new LinkedHashMap<>(Objects.requireNonNull(details));
         this.occurredAt = Objects.requireNonNull(occurredAt);
@@ -96,8 +107,16 @@ public class AuditEvent implements Persistable<UUID> {
         return actorUserId;
     }
 
+    public String getActorUsername() {
+        return actorUsername;
+    }
+
     public String getTargetUserId() {
         return targetUserId;
+    }
+
+    public String getTargetUsername() {
+        return targetUsername;
     }
 
     public Map<String, Object> getDetails() {

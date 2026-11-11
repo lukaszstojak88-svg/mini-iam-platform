@@ -15,6 +15,11 @@ export class AuthService {
     return this.keycloak.authenticated ?? false;
   }
 
+  /** Keycloak user id (`sub`) of the signed-in user. */
+  get userId(): string {
+    return this.keycloak.tokenParsed?.sub ?? '';
+  }
+
   get username(): string {
     return (this.keycloak.tokenParsed?.['preferred_username'] as string | undefined) ?? '';
   }

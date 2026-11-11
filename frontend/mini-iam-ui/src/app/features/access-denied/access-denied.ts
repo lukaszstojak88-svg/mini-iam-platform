@@ -12,11 +12,11 @@ import { RouterLink } from '@angular/router';
     <mat-card class="denied">
       <mat-card-content>
         <mat-icon class="icon">lock</mat-icon>
-        <h1>Brak uprawnień</h1>
-        <p>Nie masz uprawnień do tego zasobu. Jeśli uważasz, że to błąd, skontaktuj się z administratorem.</p>
+        <h1>Access denied</h1>
+        <p>You do not have permission to view this page. If you think this is a mistake, contact the administrator.</p>
       </mat-card-content>
       <mat-card-actions>
-        <a mat-flat-button routerLink="/dashboard">Wróć do dashboardu</a>
+        <a mat-flat-button routerLink="/dashboard">Back to dashboard</a>
       </mat-card-actions>
     </mat-card>
   `,
@@ -25,12 +25,15 @@ import { RouterLink } from '@angular/router';
       max-width: 560px;
       margin: 48px auto;
       text-align: center;
+      border: 1px solid var(--app-border);
+      border-radius: 12px;
+      box-shadow: none;
     }
     .icon {
       font-size: 48px;
       width: 48px;
       height: 48px;
-      color: #dc2626;
+      color: var(--app-danger);
     }
     mat-card-actions {
       justify-content: center;

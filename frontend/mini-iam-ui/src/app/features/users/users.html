@@ -1,0 +1,70 @@
+<app-page-header title="Users" description="Accounts in Keycloak with their application profiles.">
+  <a mat-flat-button routerLink="/users/new" data-testid="add-user">
+    <mat-icon>person_add</mat-icon>
+    Add user
+  </a>
+</app-page-header>
+
+<section class="card table-card">
+  <div class="filters">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search">
+      <mat-label>Search</mat-label>
+      <mat-icon matPrefix>search</mat-icon>
+      <input matInput [formControl]="search" placeholder="Username, e-mail or name" maxlength="100"
+             data-testid="search" />
+    </mat-form-field>
+  </div>
+
+  @if (status() === 'error') {
+    <div class="card-section">
+      <app-load-state status="error" [message]="errorMessage()" (retry)="retry()" />
+    </div>
+  } @else {
+    <div class="table-scroll">
+      <table mat-table [dataSource]="users()" matSort [matSortActive]="sort().active"
+             [matSortDirection]="sort().direction" matSortDisableClear (matSortChange)="onSort($event)">
+        <ng-container matColumnDef="user">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header="username">User</th>
+          <td mat-cell *matCellDef="let u">
+            <a class="name" [routerLink]="['/users', u.id]">{{ fullName(u) }}</a>
+            <div class="sub">{{ u.username }}</div>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="email">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>E-mail</th>
+          <td mat-cell *matCellDef="let u" class="wrap">{{ u.email }}</td>
+        </ng-container>
+        <ng-container matColumnDef="enabled">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+          <td mat-cell *matCellDef="let u">
+            <app-status-pill [variant]="u.enabled ? 'success' : 'danger'">{{ u.enabled ? 'Active' : 'Inactive' }}</app-status-pill>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="createdAt">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Created</th>
+          <td mat-cell *matCellDef="let u">{{ u.createdAt | date: 'mediumDate' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef><span class="cdk-visually-hidden">Actions</span></th>
+          <td mat-cell *matCellDef="let u" class="actions">
+            <a mat-icon-button [routerLink]="['/users', u.id]" matTooltip="Details" [attr.aria-label]="'Details of ' + u.username">
+              <mat-icon>chevron_right</mat-icon>
+            </a>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="columns"></tr>
+        <tr mat-row *matRowDef="let row; columns: columns" data-testid="user-row"></tr>
+      </table>
+    </div>
+
+    @if (status() === 'loading') {
+      <app-load-state status="loading" />
+    } @else if (users().length === 0) {
+      <p class="empty" data-testid="empty">No users found.</p>
+    }
+
+    <mat-paginator [length]="total()" [pageIndex]="page()" [pageSize]="size()" [pageSizeOptions]="pageSizes"
+                   (page)="onPage($event)" aria-label="Users pages" />
+  }
+</section>

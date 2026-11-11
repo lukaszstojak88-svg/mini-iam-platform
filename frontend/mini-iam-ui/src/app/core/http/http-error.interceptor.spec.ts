@@ -28,10 +28,10 @@ describe('httpErrorInterceptor', () => {
     httpMock = TestBed.inject(HttpTestingController);
   });
 
-  function failRequest(url: string, status: number): unknown {
+  function failRequest(url: string, status: number, body: object = { status }): unknown {
     let received: unknown;
     http.get(url).subscribe({ error: (error: unknown) => (received = error) });
-    httpMock.expectOne(url).flush({ status }, { status, statusText: 'error' });
+    httpMock.expectOne(url).flush(body, { status, statusText: 'error' });
     return received;
   }
 
@@ -47,6 +47,16 @@ describe('httpErrorInterceptor', () => {
 
     expect(router.navigateByUrl).toHaveBeenCalledWith('/access-denied');
     expect(keycloak.login).not.toHaveBeenCalled();
+  });
+
+  it('leaves a 403 with a domain code to the view', () => {
+    const error = failRequest('http://localhost:8082/api/users/kc-1/roles', 403, {
+      status: 403,
+      code: 'SELF_ROLE_CHANGE',
+    });
+
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+    expect(error).toBeDefined();
   });
 
   it('ignores errors from other origins', () => {

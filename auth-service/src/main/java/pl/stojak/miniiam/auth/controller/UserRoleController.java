@@ -45,7 +45,8 @@ public class UserRoleController {
     public UserRolesResponse assign(@PathVariable @Pattern(regexp = USER_ID_PATTERN) String userId,
                                     @Valid @RequestBody AssignRoleRequest request,
                                     JwtAuthenticationToken authentication) {
-        return roleService.assignRole(userId, request.roleName(), authentication.getName());
+        return roleService.assignRole(userId, request.roleName(), authentication.getName(),
+                actorUsername(authentication));
     }
 
     @DeleteMapping("/{roleName}")
@@ -53,7 +54,12 @@ public class UserRoleController {
     public ResponseEntity<Void> remove(@PathVariable @Pattern(regexp = USER_ID_PATTERN) String userId,
                                        @PathVariable String roleName,
                                        JwtAuthenticationToken authentication) {
-        roleService.removeRole(userId, roleName, authentication.getName());
+        roleService.removeRole(userId, roleName, authentication.getName(), actorUsername(authentication));
         return ResponseEntity.noContent().build();
+    }
+
+    /** Username of the caller, stored in the audit event next to the keycloakId. */
+    private static String actorUsername(JwtAuthenticationToken authentication) {
+        return authentication.getToken().getClaimAsString("preferred_username");
     }
 }

@@ -107,6 +107,7 @@ public class UserController {
                 .filter(authority -> authority.startsWith("ROLE_"))
                 .map(authority -> authority.substring("ROLE_".length()))
                 .collect(Collectors.toUnmodifiableSet());
-        return new Actor(authentication.getName(), roles);
+        return new Actor(authentication.getName(),
+                authentication.getToken().getClaimAsString("preferred_username"), roles);
     }
 }

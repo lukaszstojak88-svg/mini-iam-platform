@@ -1,8 +1,5 @@
-// Include theming for Angular Material with `mat.theme()`.
-// This Sass mixin will define CSS variables that are used for styling Angular Material
-// components according to the Material 3 design spec.
-// Learn more about theming and how to use it for your application's
-// custom components at https://material.angular.dev/guide/theming
+// Global theme (spec §10.3, docs/gui.jpg): Angular Material 3 with an indigo-like palette, colour tokens as
+// CSS variables used by the application's own components.
 @use '@angular/material' as mat;
 
 html {
@@ -10,7 +7,7 @@ html {
   @include mat.theme(
     (
       color: (
-        primary: mat.$azure-palette,
+        primary: mat.$violet-palette,
         tertiary: mat.$blue-palette,
       ),
       typography: Roboto,
@@ -19,21 +16,172 @@ html {
   );
 }
 
+:root {
+  --app-sidebar: #111827;
+  --app-sidebar-text: #cbd5e1;
+  --app-primary: #4f46e5;
+  --app-primary-soft: #eef2ff;
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-border: #e5e7eb;
+  --app-text: #111827;
+  --app-text-muted: #64748b;
+  --app-table-header: #f8fafc;
+  --app-success: #15803d;
+  --app-success-bg: #dcfce7;
+  --app-danger: #dc2626;
+  --app-danger-bg: #fee2e2;
+  --app-neutral-bg: #f1f5f9;
+
+  // Primary buttons in the brand indigo.
+  --mat-button-filled-container-color: var(--app-primary);
+  --mat-button-filled-label-text-color: #ffffff;
+}
+
 body {
-  // Default the application to a light color theme. This can be changed to
-  // `dark` to enable the dark color theme, or to `light dark` to defer to the
-  // user's system settings.
   color-scheme: light;
-
-  // Set a default background, font and text colors for the application using
-  // Angular Material's system-level CSS variables. Learn more about these
-  // variables at https://material.angular.dev/guide/system-variables
-  background-color: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
+  background-color: var(--app-bg);
+  color: var(--app-text);
   font: var(--mat-sys-body-medium);
-
-  // Reset the user agent margin.
   margin: 0;
   height: 100%;
 }
 
+// White card with a subtle border and ~12 px radius (tables, forms, details).
+.card {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.card-section {
+  padding: 20px 24px;
+}
+
+.card-title {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+// Tables inside cards: light header row, separators between rows.
+.table-card {
+  overflow: hidden;
+
+  .table-scroll {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    background: transparent;
+  }
+
+  th.mat-mdc-header-cell {
+    background: var(--app-table-header);
+    color: var(--app-text-muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--app-text-muted);
+  }
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+// Toolbar of filters above a table.
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px 0;
+
+  mat-form-field {
+    min-width: 200px;
+  }
+}
+
+// Label-value lists (profile details); single column in narrow cards (docs/frontend.md §7).
+.details-card {
+  container-type: inline-size;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  row-gap: 12px;
+  margin: 0;
+
+  dt {
+    color: var(--app-text-muted);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@container (max-width: 400px) {
+  .details {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+
+    dd {
+      margin-bottom: 12px;
+    }
+  }
+}
+
+.muted {
+  color: var(--app-text-muted);
+}
+
+// Destructive filled button (delete).
+button.danger,
+a.danger {
+  --mat-button-filled-container-color: var(--app-danger);
+  --mat-button-filled-label-text-color: #ffffff;
+}
+
+.manage {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--app-primary);
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.form-error {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--app-danger-bg);
+  color: var(--app-danger);
+}
+
+.snack-error {
+  --mat-snack-bar-container-color: #7f1d1d;
+}
+
+.self-note {
+  margin: 0 0 16px;
+}

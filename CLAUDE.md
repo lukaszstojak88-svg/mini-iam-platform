@@ -23,8 +23,8 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-Etapy 1–5 zrealizowane i zaakceptowane.
-Następny: **Etap 6 — Angular UI** (nie zaczynać bez decyzji użytkownika).
+**Etap 6 — Angular UI** — zrealizowany, oczekuje akceptacji użytkownika (Etapy 1–5 zaakceptowane).
+Następny: Etap 7 — Dokumentacja i jakość (nie zaczynać bez decyzji użytkownika).
 
 ## Komendy
 
@@ -74,8 +74,11 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 - user-service ↔ Keycloak: własny `KeycloakAdminClient` (Spring RestClient + Spring Security OAuth2 Client,
   client_credentials `mini-iam-admin`, timeouty 2 s/5 s, bez retry). Kolejność: Keycloak → baza, przy błędzie
   zapisu lokalnego kompensacja w Keycloak; `enabled` — źródło prawdy Keycloak (wyrównywane przy `GET /{id}`).
+- `firstName` i `lastName` wymagane (`@NotBlank`) przy tworzeniu i każdej edycji profilu (także `PUT /me`);
+  kolumny w bazie zostają nullable (profile just-in-time z Keycloak mogą nie mieć imienia).
 - Tworzenie konta z `temporaryPassword` (tylko do Keycloak, `temporary=true`); profil just-in-time przy
-  `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN.
+  `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN; nikt nie dezaktywuje ani
+  nie usuwa własnego konta (403 `SELF_ACCOUNT_PROTECTED`, UI ukrywa te akcje).
 - Błędy user-service: ProblemDetail + `code` (`ErrorCode`); lista: sort tylko po whitelist, `size` > 100 → 400 `INVALID_REQUEST` (bez cichego przycinania;
   `max-page-size` wyłączone, limit `MAX_PAGE_SIZE` w serwisie — tak samo w audit-service).
 - auth-service: role tylko w Keycloak (bez bazy i cache), własny `KeycloakAdminClient` (wzorzec z user-service,
@@ -96,6 +99,9 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   `AUDIT_*` w API. Zdarzenia: `USER_CREATED`/`USER_DELETED` `{username}`, `USER_UPDATED` `{changedFields}` (tylko
   nazwy pól, tylko gdy coś się zmieniło; także `PUT /me`), `USER_ACTIVATED`/`USER_DEACTIVATED` `{}` (tylko przy
   faktycznej zmianie), `ROLE_ASSIGNED`/`ROLE_REMOVED` `{roleName}`. Bez audytu: odrzucone operacje, profil JIT.
+  Każde zdarzenie niesie też `actorUsername` (claim `preferred_username`) i `targetUsername` (profil lub konto
+  Keycloak) — opcjonalne pola, kolumny nullable (changeset `002`), nielogowane (dane osobowe). `details.username`
+  w `USER_CREATED`/`USER_DELETED` zostaje celowo (spójność ze starszymi wpisami, fallback w UI).
 - audit-service: tabela `audit.audit_events` (spec §8.2), encja `@Immutable`, brak PUT/DELETE; `POST
   /internal/api/audit-events` (`ROLE_SERVICE`, 201 `{id}`, `correlation_id` z nagłówka, nie z body; nieznany typ,
   `details` > 4 KB lub > 20 kluczy → 400); `GET /api/audit-events` (ADMIN, AUDITOR; filtry `eventType`,
@@ -104,6 +110,11 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 - Kolekcja Postman `docs/postman/` (kolekcja v2.1 + środowisko lokalne bez sekretów, instrukcja w `README.md`):
   przy każdym nowym lub zmienionym endpoincie aktualizuj odpowiedni request (opis ról, test oczekiwanego statusu).
 - Komentarze w kodzie i plikach konfiguracyjnych po angielsku; dokumentacja Markdown po polsku.
+- UI po angielsku (etykiety, komunikaty, błędy z własnego słownika w `core/http/api-error.ts`, nie z `detail`).
+  Interceptor: 403 bez `code` → `/access-denied`, 403 z `code` → komunikat w widoku. Wszystkie widoki leniwe,
+  stan list (strona, rozmiar, sort, filtry) w query params. Audit log: aktor/cel jako `actorUsername`/`targetUsername`
+  ze zdarzenia (fallback: `details.username`, potem skrócony keycloakId; bez pobierania nazw — AUDITOR nie ma
+  `GET /api/users`).
 - UI: z makiety bierzemy tylko wygląd; funkcje spoza MVP (tworzenie ról, import/eksport, Pending Reviews,
   Settings, Billing, globalna wyszukiwarka, powiadomienia) pomijamy.
 

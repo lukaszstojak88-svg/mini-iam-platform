@@ -54,9 +54,9 @@ public class AuditEventService {
     public UUID record(RecordAuditEventRequest request) {
         checkDetailsSize(request);
         AuditEvent saved = repository.save(new AuditEvent(request.eventType(), request.actorUserId(),
-                request.targetUserId(), request.details(), request.occurredAt(),
-                MDC.get(CorrelationIdFilter.MDC_KEY)));
-        // Details are not logged: they may contain personal data (e.g. username).
+                blankToNull(request.actorUsername()), request.targetUserId(), blankToNull(request.targetUsername()),
+                request.details(), request.occurredAt(), MDC.get(CorrelationIdFilter.MDC_KEY)));
+        // Usernames and details are not logged: they are personal data.
         log.info("Audit event {} recorded: id={}, actor={}, target={}", saved.getEventType(), saved.getId(),
                 saved.getActorUserId(), saved.getTargetUserId());
         return saved.getId();

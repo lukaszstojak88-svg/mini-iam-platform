@@ -1,0 +1,30 @@
+.search {
+  flex: 1;
+  max-width: 420px;
+}
+
+.name {
+  font-weight: 500;
+  color: var(--app-text);
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--app-primary);
+    text-decoration: underline;
+  }
+}
+
+.sub {
+  font-size: 0.8rem;
+  color: var(--app-text-muted);
+}
+
+.wrap {
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  width: 56px;
+  text-align: right;
+}

@@ -8,10 +8,10 @@ w architekturze mikroserwisowej (Spring Boot 3.5 + Keycloak 26 + PostgreSQL + EL
 - Architektura: [`docs/architecture.md`](docs/architecture.md)
 - Kolekcja Postman z requestami API: [`docs/postman/`](docs/postman/README.md)
 
-> **Status:** Etap 5 (Audit Service). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
+> **Status:** Etap 6 (Angular UI). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
 > zarządzanie użytkownikami w Keycloak i lokalnym profilu (`/api/users`), odczyt i przypisywanie ról
-> (`/api/roles`, `/api/users/{keycloakId}/roles`), audyt operacji administracyjnych (`/api/audit-events`).
-> Widoki UI do zarządzania — Etap 6.
+> (`/api/roles`, `/api/users/{keycloakId}/roles`), audyt operacji administracyjnych (`/api/audit-events`)
+> i interfejs Angular do wszystkich tych operacji (Dashboard, Users, Roles, Audit log).
 
 ## 1. Wymagania lokalne
 
@@ -72,8 +72,21 @@ npm ci
 npm start          # http://localhost:4200
 ```
 
-Otwórz http://localhost:4200 — aplikacja przekieruje do logowania w Keycloak (Authorization Code + PKCE),
-po zalogowaniu jako `admin` dashboard pokaże dane i role zwrócone przez `GET /api/auth/me`.
+Otwórz http://localhost:4200 — aplikacja przekieruje do logowania w Keycloak (Authorization Code + PKCE).
+Interfejs jest po angielsku. Widoki i role (menu pokazuje tylko dostępne pozycje; backend i tak sprawdza uprawnienia):
+
+| Widok | Adres | Role | Co robi |
+|---|---|---|---|
+| Dashboard | `/dashboard` | wszyscy | dane i role z tokena, profil, edycja własnego e-maila, imienia i nazwiska |
+| Users | `/users` | ADMIN, MANAGER | lista z wyszukiwaniem, sortowaniem i stronicowaniem (stan w URL), „Add user” |
+| User details | `/users/:id` | ADMIN, MANAGER | profil, „Edit”; ADMIN: role, aktywacja/dezaktywacja, usuwanie (z potwierdzeniem) |
+| New / Edit user | `/users/new`, `/users/:id/edit` | ADMIN, MANAGER | formularz z walidacją jak w backendzie, hasło tymczasowe tylko przy tworzeniu |
+| Roles | `/roles` | ADMIN | role realmu, wybór użytkownika, nadawanie i odbieranie `ADMIN`/`MANAGER`/`AUDITOR` |
+| Audit log | `/audit-logs` | ADMIN, AUDITOR | zdarzenia audytu z filtrami (typ, aktor, cel, zakres dat) i szczegółami |
+
+Główny scenariusz (jako `admin`): **Users → Add user** → szczegóły → **Edit** → **Manage roles** (nadaj
+`MANAGER`, odbierz) → **Deactivate** / **Activate** → **Delete** → **Audit log** pokazuje wszystkie operacje
+z tym samym `correlationId` co w logach (Kibana).
 
 ## 4. Adresy
 
@@ -90,6 +103,27 @@ po zalogowaniu jako `admin` dashboard pokaże dane i role zwrócone przez `GET /
 | PostgreSQL | localhost:5432, baza `mini_iam` (schematy `users`, `audit`) |
 
 Wszystkie porty są publikowane tylko na `127.0.0.1`.
+
+### Połączenie z bazą PostgreSQL
+
+Klient SQL (DBeaver, IntelliJ Database, pgAdmin): host `localhost`, port `5432` (`POSTGRES_PORT` z `.env`),
+JDBC `jdbc:postgresql://localhost:5432/mini_iam`. Każdy serwis ma własne konto i schemat (spec §8.4):
+
+| Użytkownik | Hasło (z `.env`) | Dostęp |
+|---|---|---|
+| `postgres` | `POSTGRES_SUPERUSER_PASSWORD` | wszystko (superuser) — wygodny do przeglądania |
+| `user_service` | `USER_SERVICE_DB_PASSWORD` | schemat `users` w bazie `mini_iam` |
+| `audit_service` | `AUDIT_SERVICE_DB_PASSWORD` | schemat `audit` w bazie `mini_iam` |
+| `keycloak` | `KEYCLOAK_DB_PASSWORD` | baza `keycloak` |
+
+Tabele są w schematach `users` i `audit` (nie w `public`) — w kliencie włącz widoczność wszystkich schematów,
+w zapytaniach używaj pełnych nazw, np. `SELECT * FROM audit.audit_events;`.
+
+Bez instalowania klienta:
+
+```bash
+docker compose exec postgres psql -U postgres -d mini_iam   # \dn — schematy, \dt users.* / \dt audit.* — tabele
+```
 
 ## 5. Konto administratora aplikacji
 
@@ -187,12 +221,14 @@ Zachowanie:
   w Keycloak jest wycofywana. Jeśli wycofanie też się nie uda, w logu jest ERROR z `keycloakId` i identyfikatorem
   profilu (do ręcznego uzgodnienia), a API zwraca 500 `USER_SYNC_FAILED`. `DELETE` można bezpiecznie ponowić.
 - **Status:** źródłem prawdy jest Keycloak — `GET /api/users/{id}` wyrównuje lokalny `enabled` i loguje rozbieżność.
+- **Własne konto:** ADMIN nie dezaktywuje ani nie usuwa własnego konta (403 `SELF_ACCOUNT_PROTECTED`); UI nie
+  pokazuje tych akcji na własnym profilu.
 - **Błędy:** ProblemDetail z polem `code` (np. `USERNAME_OR_EMAIL_TAKEN`, `VALIDATION_FAILED` + `errors`,
   `KEYCLOAK_UNAVAILABLE` → 503).
 - **Audyt:** utworzenie, edycja, zmiana statusu i usunięcie konta trafiają do audit-service (sekcja 9).
 - **Znane ograniczenia:** reguła ostatniego administratora nie jest chroniona blokadą — dwie równoczesne dezaktywacje dwóch ostatnich adminów
-  mogą obie przejść; konto bez imienia/nazwiska może zostać poproszone przez Keycloak o ich uzupełnienie przy
-  logowaniu (domyślny profil użytkownika Keycloak).
+  mogą obie przejść; konto utworzone poza aplikacją (konsola Keycloak) bez imienia/nazwiska może zostać poproszone
+  przez Keycloak o ich uzupełnienie przy logowaniu. Przez API imię i nazwisko są wymagane.
 
 ## 8. Role (auth-service)
 
@@ -250,7 +286,8 @@ curl "http://localhost:8083/api/audit-events?targetUserId=<keycloakId>&sort=occu
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Rejestrowane zdarzenia (`actorUserId`, `targetUserId` = keycloakId; `correlationId` = `X-Correlation-Id`
+Rejestrowane zdarzenia (`actorUserId`, `targetUserId` = keycloakId; `actorUsername`, `targetUsername` = nazwy
+użytkowników w chwili zdarzenia, puste w zdarzeniach sprzed ich wprowadzenia; `correlationId` = `X-Correlation-Id`
 żądania, które spowodowało zdarzenie — ten sam identyfikator jest w logach i w Kibanie):
 
 | Zdarzenie | Serwis | Operacja | `details` |
@@ -330,4 +367,5 @@ Nie wymagają uruchomionego Compose ani ELK.
 | Zmiany w realm imporcie nie są widoczne | Realm importuje się tylko raz — `docker compose down -v`. |
 | Brak logów w Kibanie | Sprawdź `docker compose --profile elk logs filebeat logstash`; serwisy muszą mieć sterownik logów `json-file` (ustawiony w Compose) i etykietę `co.elastic.logs/enabled=true`. Zawęź zakres czasu w Discover. |
 | Elasticsearch kończy się błędem pamięci | Zwiększ pamięć dla Docker Desktop (min. 4 GB z profilem `elk`). |
+| PostgreSQL: `password authentication failed` po zmianie haseł w `.env` | Konta bazy tworzy `infrastructure/postgres/init/01-init.sh` tylko przy pustym wolumenie — zmień hasło jako `postgres` (`ALTER ROLE user_service PASSWORD '...';`) albo `docker compose down -v` (**kasuje dane**). |
 | Port zajęty | Zmień odpowiedni `*_PORT` w `.env`. |

@@ -63,7 +63,7 @@ class AuditEventPublisherTest {
     private static final AtomicLong RESPONSE_DELAY_MS = new AtomicLong(0);
 
     private static final AuditEventRequest EVENT = new AuditEventRequest(AuditEventType.USER_CREATED, "kc-admin",
-            "kc-user", Map.of("username", "john.doe"), Instant.parse("2026-11-10T09:00:00Z"));
+            "admin", "kc-user", "john.doe", Map.of("username", "john.doe"), Instant.parse("2026-11-10T09:00:00Z"));
 
     record RecordedRequest(String method, String path, String authorization, String correlationId, String body) {
     }
@@ -113,6 +113,7 @@ class AuditEventPublisherTest {
         assertThat(request.body())
                 .contains("\"eventType\":\"USER_CREATED\"")
                 .contains("\"targetUserId\":\"kc-user\"")
+                .contains("\"actorUsername\":\"admin\"")
                 .contains("\"username\":\"john.doe\"")
                 .contains("\"occurredAt\":\"2026-11-10T09:00:00Z\"");
     }

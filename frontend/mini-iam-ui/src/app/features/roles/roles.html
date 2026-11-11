@@ -1,0 +1,96 @@
+<app-page-header title="Roles" description="Application roles of the realm and role assignments of users." />
+
+<app-load-state [status]="status()" [message]="errorMessage()" (retry)="loadRoles()" />
+
+@if (status() === 'loaded') {
+  <section class="tiles">
+    <app-stat-tile icon="shield" label="Application roles" [value]="roles().length" />
+    <app-stat-tile icon="person_add" label="Assignable" [value]="assignableCount()" />
+  </section>
+
+  <div class="columns">
+    <section class="card table-card">
+      <h2 class="card-title card-section heading">Roles</h2>
+      <div class="table-scroll">
+        <table mat-table [dataSource]="roles()" data-testid="roles-table">
+          <ng-container matColumnDef="name">
+            <th mat-header-cell *matHeaderCellDef>Role</th>
+            <td mat-cell *matCellDef="let r" class="role-name">{{ r.name }}</td>
+          </ng-container>
+          <ng-container matColumnDef="description">
+            <th mat-header-cell *matHeaderCellDef>Description</th>
+            <td mat-cell *matCellDef="let r">{{ r.description }}</td>
+          </ng-container>
+          <ng-container matColumnDef="assignable">
+            <th mat-header-cell *matHeaderCellDef>Assignment</th>
+            <td mat-cell *matCellDef="let r">{{ r.assignable ? 'Assignable' : 'Base role (automatic)' }}</td>
+          </ng-container>
+          <tr mat-header-row *matHeaderRowDef="roleColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: roleColumns"></tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="card card-section" data-testid="user-roles">
+      <h2 class="card-title">User roles</h2>
+      <mat-form-field appearance="outline" class="full">
+        <mat-label>User</mat-label>
+        <mat-icon matPrefix>search</mat-icon>
+        <input matInput [formControl]="userSearch" [matAutocomplete]="auto" placeholder="Type at least 2 characters"
+               data-testid="user-search" />
+        <mat-autocomplete #auto="matAutocomplete" [displayWith]="displayUser" (optionSelected)="onUserSelected($event)">
+          @for (user of suggestions(); track user.id) {
+            <mat-option [value]="user">
+              {{ user.username }} <span class="muted">· {{ user.email }}</span>
+            </mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+
+      @if (selected(); as user) {
+        <p class="selected">{{ user.username }} <span class="muted">· {{ user.email }}</span></p>
+
+        @if (userRolesError()) {
+          <app-load-state status="error" [message]="userRolesError()" (retry)="retryUserRoles()" />
+        } @else if (userRoles(); as held) {
+          <mat-chip-set aria-label="Roles of the selected user" data-testid="role-chips">
+            @for (role of held; track role) {
+              <mat-chip [removable]="canRemove(role)" (removed)="remove(role)" [disabled]="busy()">
+                {{ role }}
+                @if (canRemove(role)) {
+                  <button matChipRemove [attr.aria-label]="'Remove role ' + role" [attr.data-testid]="'remove-' + role">
+                    <mat-icon>cancel</mat-icon>
+                  </button>
+                }
+              </mat-chip>
+            }
+          </mat-chip-set>
+          <p class="hint">USER is the base role of every account and cannot be removed.</p>
+
+          @if (isSelf()) {
+            <p class="form-error" data-testid="self-note">You cannot change your own roles - ask another administrator.</p>
+          } @else if (missingRoles().length > 0) {
+            <div class="assign">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Role to assign</mat-label>
+                <mat-select [formControl]="roleToAssign" data-testid="role-select">
+                  @for (role of missingRoles(); track role) {
+                    <mat-option [value]="role">{{ role }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <button mat-flat-button type="button" (click)="assign()" [disabled]="!roleToAssign.value || busy()"
+                      data-testid="assign">
+                Assign
+              </button>
+            </div>
+          }
+        } @else {
+          <app-load-state status="loading" />
+        }
+      } @else {
+        <p class="muted">Select a user to see and change their roles.</p>
+      }
+    </section>
+  </div>
+}

@@ -46,6 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RoleControllersTest {
 
     private static final String CALLER = "kc-caller";
+    private static final String CALLER_NAME = "caller";
     private static final String TARGET = "0b6f1c2e-1111-2222-3333-444455556666";
     private static final String ROLES_URL = "/api/users/" + TARGET + "/roles";
     private static final String ASSIGN_MANAGER = "{\"roleName\":\"MANAGER\"}";
@@ -57,7 +58,7 @@ class RoleControllersTest {
     private RoleService roleService;
 
     private static RequestPostProcessor asSubject(String subject, String... roles) {
-        return jwt().jwt(token -> token.subject(subject))
+        return jwt().jwt(token -> token.subject(subject).claim("preferred_username", CALLER_NAME))
                 .authorities(Arrays.stream(roles)
                         .<GrantedAuthority>map(r -> new SimpleGrantedAuthority("ROLE_" + r)).toList());
     }
@@ -143,7 +144,7 @@ class RoleControllersTest {
 
     @Test
     void adminAssignsRoleAndGetsCurrentRoles() throws Exception {
-        when(roleService.assignRole(TARGET, "MANAGER", CALLER))
+        when(roleService.assignRole(TARGET, "MANAGER", CALLER, CALLER_NAME))
                 .thenReturn(new UserRolesResponse(TARGET, List.of(AppRole.MANAGER, AppRole.USER)));
 
         mockMvc.perform(post(ROLES_URL).with(as("ADMIN", "USER"))
@@ -157,7 +158,7 @@ class RoleControllersTest {
     void adminRemovesRoleWith204() throws Exception {
         mockMvc.perform(delete(ROLES_URL + "/MANAGER").with(as("ADMIN", "USER")))
                 .andExpect(status().isNoContent());
-        verify(roleService).removeRole(TARGET, "MANAGER", CALLER);
+        verify(roleService).removeRole(TARGET, "MANAGER", CALLER, CALLER_NAME);
     }
 
     @ParameterizedTest
@@ -192,10 +193,10 @@ class RoleControllersTest {
 
     @Test
     void domainErrorsBecomeProblemDetailsWithCode() throws Exception {
-        when(roleService.assignRole(anyString(), anyString(), anyString()))
+        when(roleService.assignRole(anyString(), anyString(), anyString(), anyString()))
                 .thenThrow(DomainException.badRequest(ErrorCode.ROLE_NOT_ASSIGNABLE, "Only the roles ..."));
         doThrow(DomainException.conflict(ErrorCode.LAST_ADMIN, "last admin"))
-                .when(roleService).removeRole(TARGET, "ADMIN", CALLER);
+                .when(roleService).removeRole(TARGET, "ADMIN", CALLER, CALLER_NAME);
 
         mockMvc.perform(post(ROLES_URL).with(as("ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"roleName\":\"USER\"}"))

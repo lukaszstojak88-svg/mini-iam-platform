@@ -51,8 +51,9 @@ import java.util.UUID;
  * for manual reconciliation and a generic error is returned. There is no distributed transaction.
  * <p>
  * Every successful change is recorded in audit-service after it was applied in Keycloak and in the database.
- * Recording is best effort (spec §7): a failure is logged and does not fail the operation. Event details carry
- * no secrets and as little personal data as possible: the username, or the names (not values) of changed fields.
+ * Recording is best effort (spec §7): a failure is logged and does not fail the operation. Events carry no
+ * secrets and as little personal data as possible: the actor and target usernames and, in details, only the
+ * username (create/delete, kept for consistency with older events) or the names (not values) of changed fields.
  */
 @Service
 public class UserService {
@@ -156,7 +157,7 @@ public class UserService {
             throw new UserSyncException("Saving the profile failed; the Keycloak account was rolled back", e);
         }
         log.info("User {} created (keycloakId={}) by {}", profile.getId(), keycloakId, actor.keycloakId());
-        audit(AuditEventType.USER_CREATED, actor, keycloakId, Map.of("username", username));
+        audit(AuditEventType.USER_CREATED, actor, profile, Map.of("username", username));
         return UserMapper.toResponse(profile);
     }
 
@@ -186,6 +187,7 @@ public class UserService {
     public UserResponse updateStatus(UUID id, boolean enabled, Actor actor) {
         UserProfile profile = findProfile(id);
         if (!enabled) {
+            ensureNotOwnAccount(profile, actor, "deactivate");
             ensureNotLastActiveAdmin(profile.getKeycloakId(), "deactivate");
         }
         // Revert target is the state in Keycloak (source of truth), not the possibly stale local flag.
@@ -205,13 +207,14 @@ public class UserService {
         if (previous != enabled) {
             // Setting the status it already had is not an activation/deactivation.
             audit(enabled ? AuditEventType.USER_ACTIVATED : AuditEventType.USER_DEACTIVATED,
-                    actor, saved.getKeycloakId(), Map.of());
+                    actor, saved, Map.of());
         }
         return UserMapper.toResponse(saved);
     }
 
     public void delete(UUID id, Actor actor) {
         UserProfile profile = findProfile(id);
+        ensureNotOwnAccount(profile, actor, "delete");
         ensureNotLastActiveAdmin(profile.getKeycloakId(), "delete");
         if (!keycloak.deleteUser(profile.getKeycloakId())) {
             log.warn("Keycloak account {} of profile {} did not exist; deleting the local profile only",
@@ -227,20 +230,20 @@ public class UserService {
         }
         log.info("User {} (keycloakId={}) deleted by {}", profile.getId(), profile.getKeycloakId(), actor.keycloakId());
         // The username keeps the entry readable after the account is gone.
-        audit(AuditEventType.USER_DELETED, actor, profile.getKeycloakId(), Map.of("username", profile.getUsername()));
+        audit(AuditEventType.USER_DELETED, actor, profile, Map.of("username", profile.getUsername()));
     }
 
     // ---------------------------------------------------------------- rules and helpers
 
-    private void audit(AuditEventType type, Actor actor, String targetKeycloakId, Map<String, Object> details) {
-        auditEventPublisher.publish(new AuditEventRequest(type, actor.keycloakId(), targetKeycloakId, details,
-                Instant.now()));
+    private void audit(AuditEventType type, Actor actor, UserProfile target, Map<String, Object> details) {
+        auditEventPublisher.publish(new AuditEventRequest(type, actor.keycloakId(), actor.username(),
+                target.getKeycloakId(), target.getUsername(), details, Instant.now()));
     }
 
     /** A save without any change is not audited. */
     private void auditUpdate(Actor actor, UserProfile updated, List<String> changedFields) {
         if (!changedFields.isEmpty()) {
-            audit(AuditEventType.USER_UPDATED, actor, updated.getKeycloakId(), Map.of("changedFields", changedFields));
+            audit(AuditEventType.USER_UPDATED, actor, updated, Map.of("changedFields", changedFields));
         }
     }
 
@@ -275,6 +278,18 @@ public class UserService {
             revert("profile", profile, () -> keycloak.updateProfile(
                     profile.getKeycloakId(), previousEmail, previousFirstName, previousLastName, false), e);
             throw new UserSyncException("Saving the profile failed", e);
+        }
+    }
+
+    /**
+     * Nobody deactivates or deletes their own account (spec §2): it would end the caller's own session and could
+     * lock the system out; another administrator has to do it.
+     */
+    private static void ensureNotOwnAccount(UserProfile profile, Actor actor, String operation) {
+        if (profile.getKeycloakId().equals(actor.keycloakId())) {
+            log.warn("Refused to {} own account {}", operation, actor.keycloakId());
+            throw new OperationForbiddenException(ErrorCode.SELF_ACCOUNT_PROTECTED,
+                    "You cannot " + operation + " your own account");
         }
     }
 

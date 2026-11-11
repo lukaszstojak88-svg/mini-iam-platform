@@ -1,0 +1,75 @@
+@if (user(); as u) {
+  <app-page-header [title]="fullName(u)" [description]="u.username">
+    <a mat-stroked-button routerLink="/users">
+      <mat-icon>arrow_back</mat-icon>
+      Back to users
+    </a>
+    <a mat-stroked-button [routerLink]="['/users', u.id, 'edit']" data-testid="edit">
+      <mat-icon>edit</mat-icon>
+      Edit
+    </a>
+    @if (isAdmin && !isSelf(u)) {
+      <button mat-stroked-button type="button" (click)="toggleStatus(u)" [disabled]="busy()" data-testid="toggle-status">
+        <mat-icon>{{ u.enabled ? 'block' : 'check_circle' }}</mat-icon>
+        {{ u.enabled ? 'Deactivate' : 'Activate' }}
+      </button>
+      <button mat-flat-button class="danger" type="button" (click)="delete(u)" [disabled]="busy()" data-testid="delete">
+        <mat-icon>delete</mat-icon>
+        Delete
+      </button>
+    }
+  </app-page-header>
+} @else {
+  <app-page-header title="User details" />
+}
+
+<app-load-state [status]="status()" [message]="errorMessage()" (retry)="load()" />
+
+@if (status() === 'loaded') {
+  @if (user(); as u) {
+    @if (isAdmin && isSelf(u)) {
+      <p class="self-note muted" data-testid="self-note">This is your own account: it cannot be deactivated or deleted
+        here - ask another administrator.</p>
+    }
+    <section class="card card-section details-card" data-testid="details">
+      <h2 class="card-title">Profile</h2>
+      <dl class="details">
+        <dt>Username</dt>
+        <dd>{{ u.username }}</dd>
+        <dt>E-mail</dt>
+        <dd>{{ u.email }}</dd>
+        <dt>First name</dt>
+        <dd>{{ u.firstName || '—' }}</dd>
+        <dt>Last name</dt>
+        <dd>{{ u.lastName || '—' }}</dd>
+        <dt>Status</dt>
+        <dd>
+          <app-status-pill [variant]="u.enabled ? 'success' : 'danger'">{{ u.enabled ? 'Active' : 'Inactive' }}</app-status-pill>
+        </dd>
+        <dt>Created</dt>
+        <dd>{{ u.createdAt | date: 'medium' }}</dd>
+        <dt>Updated</dt>
+        <dd>{{ u.updatedAt | date: 'medium' }}</dd>
+        <dt>Keycloak ID</dt>
+        <dd class="mono">{{ u.keycloakId }}</dd>
+        @if (isAdmin) {
+          <dt>Roles</dt>
+          <dd data-testid="roles">
+            @if (roles(); as r) {
+              <mat-chip-set aria-label="User roles">
+                @for (role of r.roles; track role) {
+                  <mat-chip>{{ role }}</mat-chip>
+                }
+              </mat-chip-set>
+              <a class="manage" routerLink="/roles" [queryParams]="{ user: u.id }" data-testid="manage-roles">Manage roles</a>
+            } @else if (rolesError()) {
+              <span class="muted">{{ rolesError() }}</span>
+            } @else {
+              <span class="muted">Loading…</span>
+            }
+          </dd>
+        }
+      </dl>
+    </section>
+  }
+}

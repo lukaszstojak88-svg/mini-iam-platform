@@ -1,0 +1,24 @@
+# Usernames of the actor and the target user at the time of the event, so the audit log stays readable
+# (also for AUDITOR, who cannot read user-service) and after an account is deleted.
+# Nullable: events recorded before this change have no usernames.
+databaseChangeLog:
+  - changeSet:
+      id: 002-add-audit-event-usernames
+      author: mini-iam
+      changes:
+        - addColumn:
+            tableName: audit_events
+            columns:
+              - column:
+                  name: actor_username
+                  type: VARCHAR(255)
+              - column:
+                  name: target_username
+                  type: VARCHAR(255)
+      rollback:
+        - dropColumn:
+            tableName: audit_events
+            columnName: target_username
+        - dropColumn:
+            tableName: audit_events
+            columnName: actor_username

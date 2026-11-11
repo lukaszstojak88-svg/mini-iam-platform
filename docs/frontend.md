@@ -9,9 +9,8 @@
 | Element | Status |
 |---|---|
 | Projekt Angular, Material, logowanie OIDC + PKCE, guard, interceptory | gotowe (Etap 2) |
-| Shell (sidebar + topbar), Dashboard (`/api/auth/me`), Access Denied | gotowe (Etap 2), wygląd do dopracowania w Etapie 6 |
-| API user-service (lista, szczegóły, tworzenie, edycja, status, usuwanie, `/me`) | gotowe (Etap 3) |
-| Users, User Details, Create/Edit User, Roles, Audit Logs | Etap 6 (wymaga API z Etapów 3–5) |
+| Shell (menu wg roli), Dashboard (profil + edycja), Access Denied | gotowe (Etap 6) |
+| Users, User Details, Create/Edit User, Roles, Audit Logs | gotowe (Etap 6) |
 
 ## 2. Stack i konwencje
 
@@ -21,23 +20,29 @@
 - keycloak-angular 22 + keycloak-js 26.
 - Testy: Vitest (`@angular/build:unit-test`, jsdom).
 - Nazewnictwo plików jak w Angular CLI 22: `dashboard.ts/.html/.scss/.spec.ts` (bez sufiksu `.component`).
-- Teksty w UI **po polsku**; nazwy w kodzie i komentarze **po angielsku**.
+- Teksty w UI **po angielsku** (decyzja użytkownika z Etapu 6: etykiety, komunikaty, błędy); nazwy w kodzie
+  i komentarze po angielsku; dokumentacja po polsku. Locale domyślne `en-US`.
 - Bez nowych zależności npm bez uzasadnienia i akceptacji użytkownika.
 
 ### Struktura `src/app`
 
 ```text
 core/
-  auth/        AuthService, authGuard, AppRole
-  http/        interceptory (błędy HTTP)
-  api/         jeden serwis na backend: auth-api, user-api, audit-api (+ typy odpowiedzi)
+  auth/        AuthService (role, userId z tokena), authGuard, AppRole
+  http/        http-error.interceptor (401/403), api-error (mapowanie błędów na komunikaty)
+  api/         auth-api, user-api, role-api, audit-api + api-models (typy DTO), http-params
 layout/
-  shell/       sidebar + topbar + <router-outlet>
+  shell/       sidebar (menu wg roli) + topbar + <router-outlet>
 features/
   dashboard/  users/  user-details/  user-form/  roles/  audit-logs/  access-denied/
-shared/        komponenty wielokrotnego użytku (status pill, stat tile, page header, confirm dialog)
+shared/        page-header, status-pill, stat-tile, load-state, confirm-dialog (+ ConfirmService),
+               notify.service (snackbar), form-errors (błędy serwera przy polach), list-query (stan list w URL)
+testing/       test-helpers (stuby AuthService, dane testowe)
 environments/  environment.ts - adresy Keycloak i API (bez sekretów)
 ```
+
+Wszystkie widoki ładowane leniwie (`loadComponent`); parametry tras (`:id`) trafiają do `input()` komponentu
+(`withComponentInputBinding`).
 
 ## 3. Uwierzytelnianie (spec §5.2)
 
@@ -59,6 +64,9 @@ UI **nie jest granicą bezpieczeństwa** — backend zawsze sprawdza uprawnienia
 - Role do decyzji w UI: `realm_access.roles` z access tokena (`AuthService.roles`), tylko `ADMIN`, `MANAGER`,
   `USER`, `AUDITOR`. Rola `SERVICE` nigdy nie jest pokazywana.
 - Trasy: `authGuard` + `data.roles` (dowolna z wymienionych ról); brak roli → `/access-denied`.
+- 403 z API: `httpErrorInterceptor` przekierowuje na `/access-denied` **tylko** gdy ProblemDetail nie ma `code`
+  (odmowa Spring Security — brak roli). 403 z `code` (`SELF_ROLE_CHANGE`, `SERVICE_ACCOUNT_PROTECTED`,
+  `ADMIN_ACCOUNT_PROTECTED`, `SELF_ACCOUNT_PROTECTED`) to reguła biznesowa — widok pokazuje komunikat.
 - Widoczność menu i akcji wg macierzy spec §2.1:
 
 | Pozycja / akcja | ADMIN | MANAGER | USER | AUDITOR |
@@ -78,7 +86,7 @@ UI pokazuje formularz każdemu, kto ma rolę `USER`.
 
 ## 5. Widoki MVP (spec §10.1)
 
-Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spróbuj ponownie”).
+Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Try again”).
 
 | Widok | Trasa | Role | API |
 |---|---|---|---|
@@ -88,7 +96,7 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
 | User Details | `/users/:id` | ADMIN, MANAGER | `GET /api/users/{id}`, `PATCH /api/users/{id}/status`, `DELETE /api/users/{id}`, `GET /api/users/{keycloakId}/roles` (tylko ADMIN) |
 | Create / Edit User | `/users/new`, `/users/:id/edit` | ADMIN, MANAGER | `POST /api/users`, `PUT /api/users/{id}` |
 | Roles | `/roles` | ADMIN | `GET /api/roles`, `GET/POST/DELETE /api/users/{keycloakId}/roles[/{roleName}]` |
-| Audit Logs | `/audit-logs` | ADMIN, AUDITOR | `GET /api/audit-events`, `GET /api/audit-events/{id}` |
+| Audit Logs | `/audit-logs` | ADMIN, AUDITOR | `GET /api/audit-events` (szczegóły zdarzenia z wiersza listy, bez osobnego GET) |
 | Access Denied | `/access-denied` | zalogowani | — |
 
 ### Szczegóły funkcjonalne
@@ -101,10 +109,11 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
   (`page`, `size` ∈ {10, 20, 50, 100}, maks. 100 — spec §6.1), przycisk „Dodaj użytkownika” (ADMIN, MANAGER).
   Stan listy (strona, filtr) w query params, żeby odświeżenie strony go zachowało.
 - **User Details** — dane profilu, status, role (z auth-service po `keycloakId` — nie mylić z lokalnym `id`).
-  Akcje ADMIN: aktywuj/dezaktywuj, usuń — zawsze z dialogiem potwierdzenia. Akcja „Edytuj” (ADMIN, MANAGER).
+  Akcje ADMIN: aktywuj/dezaktywuj, usuń — zawsze z dialogiem potwierdzenia; **na własnym koncie ukryte** (z notką),
+  backend i tak odrzuca je kodem 403 `SELF_ACCOUNT_PROTECTED`. Akcja „Edytuj” (ADMIN, MANAGER).
 - **Create / Edit User** — Reactive Forms; walidacja zgodna z backendem: `username` wymagany, 3–100 znaków
   `[A-Za-z0-9._-]` (backend zapisuje małymi literami); `email` wymagany, format e-mail, ≤ 255; `firstName`,
-  `lastName` opcjonalne, ≤ 100 (spec §8.1). Tylko przy tworzeniu: **hasło tymczasowe** (wymagane, 8–128 znaków,
+  `lastName` **wymagane** (niepuste), ≤ 100 — także przy edycji i w edycji własnego profilu na Dashboardzie. Tylko przy tworzeniu: **hasło tymczasowe** (wymagane, 8–128 znaków,
   `type="password"`, z polem potwierdzenia po stronie UI) — trafia wyłącznie do Keycloak, użytkownik zmienia je
   przy pierwszym logowaniu; formularz nie przechowuje go po wysłaniu. `username` nieedytowalny po utworzeniu.
   Brak pól ról. Błędy: 400 `VALIDATION_FAILED` → komunikaty przy polach z `errors[]`; 409
@@ -126,19 +135,26 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
   - konta serwisowe nie są użytkownikami aplikacji — 403 `SERVICE_ACCOUNT_PROTECTED` pokazujemy jako komunikat.
 - **Audit Logs** — tabela tylko do odczytu: czas (lokalna strefa przeglądarki, dane w UTC), typ zdarzenia,
   aktor, użytkownik docelowy, szczegóły (rozwijane / dialog z `details` i `correlationId`). Filtry: typ zdarzenia,
-  aktor, użytkownik docelowy, zakres dat; paginacja serwerowa. Brak edycji i usuwania.
+  aktor, użytkownik docelowy, zakres dat (niepoprawna data blokuje filtrowanie z komunikatem); paginacja serwerowa;
+  strona poza zakresem (stary link) → ostatnia istniejąca strona. Brak edycji i usuwania.
   Kontrakt audit-service (Etap 5):
   - `GET /api/audit-events?eventType&actorUserId&targetUserId&from&to&page&size&sort` (ADMIN, AUDITOR) →
-    `{content, page, size, totalElements, totalPages}`; element: `{id, eventType, actorUserId, targetUserId,
-    details, occurredAt, correlationId}`; `from` włącznie, `to` wyłącznie (ISO-8601 UTC); `sort` tylko
+    `{content, page, size, totalElements, totalPages}`; element: `{id, eventType, actorUserId, actorUsername,
+    targetUserId, targetUsername, details, occurredAt, correlationId}`; `from` włącznie, `to` wyłącznie (ISO-8601 UTC); `sort` tylko
     `occurredAt` / `eventType` (inne → 400), domyślnie `occurredAt,desc`; `size` > 100 → 400 (UI nie wysyła
     większych stron);
   - `GET /api/audit-events/{id}` → jeden wpis, brak → 404 `AUDIT_EVENT_NOT_FOUND`;
   - typy: `USER_CREATED`, `USER_UPDATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_DELETED`, `ROLE_ASSIGNED`,
     `ROLE_REMOVED` (nieznany typ w filtrze → 400); `details`: `{username}`, `{changedFields: [...]}`, `{roleName}`
     lub `{}`;
-  - aktor i cel to `keycloakId` — UI może je zamienić na nazwy z listy użytkowników; usuniętego konta już tam nie
-    ma, więc dla `USER_DELETED` pokazujemy `details.username`.
+  - aktor i cel UI pokazuje jako nazwy użytkowników (`actorUsername`, `targetUsername`) zapisane w zdarzeniu
+    przez serwis publikujący; pełny `keycloakId` jest w podpowiedzi i w dialogu szczegółów. Starsze zdarzenia
+    bez nazw: cel z `details.username` (`USER_CREATED`, `USER_DELETED`), a w pozostałych przypadkach skrócony
+    `keycloakId` (8 znaków). Przy zdarzeniu jest też `details.roleName`. UI **nie** pobiera nazw z user-service,
+    bo AUDITOR nie ma dostępu do `GET /api/users`; filtry aktora i celu nadal działają po `keycloakId`;
+  - zakres dat w UI to dni kalendarzowe w strefie przeglądarki, oba włącznie; wysyłane jako `from` = początek
+    pierwszego dnia i `to` = początek dnia po ostatnim (UTC, `to` wyłącznie). W URL: `from`/`to` jako `YYYY-MM-DD`,
+    `actor`, `target`, `eventType`.
 - Operacje zapisu w user-service i auth-service nie zwracają błędów audytu: przy niedostępnym audit-service
   operacja kończy się sukcesem (audyt best effort), więc UI nie obsługuje kodów `AUDIT_*`.
 - **Access Denied** — komunikat i powrót do Dashboardu.
@@ -148,19 +164,21 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
 - Adresy w `environment.api` (`userService` :8081, `authService` :8082, `auditService` :8083); brak API Gateway.
 - Identyfikatory: lokalny `id` (UUID) dla user-service, `keycloakId` dla auth-service i audytu — user-service zwraca
   `keycloakId` w DTO.
-- Daty z API w ISO-8601 UTC; wyświetlane w strefie przeglądarki (`DatePipe`, locale `pl`).
+- Daty z API w ISO-8601 UTC; wyświetlane w strefie przeglądarki (`DatePipe`, locale `en-US`).
 - Błędy w formacie ProblemDetail (`application/problem+json`) z właściwością `code` (lista kodów user-service:
   `VALIDATION_FAILED` + `errors[{field, message}]`, `INVALID_REQUEST`, `INVALID_USER_DATA`, `USER_NOT_FOUND`,
-  `USERNAME_OR_EMAIL_TAKEN`, `LAST_ADMIN`, `ADMIN_ACCOUNT_PROTECTED`, `USER_SYNC_FAILED`, `KEYCLOAK_UNAVAILABLE`,
+  `USERNAME_OR_EMAIL_TAKEN`, `LAST_ADMIN`, `ADMIN_ACCOUNT_PROTECTED`, `SELF_ACCOUNT_PROTECTED`, `USER_SYNC_FAILED`, `KEYCLOAK_UNAVAILABLE`,
   `KEYCLOAK_INTEGRATION_ERROR`, `INTERNAL_ERROR`; dodatkowo auth-service: `ROLE_NOT_ASSIGNABLE`, `ROLE_NOT_FOUND`,
   `ROLE_NOT_ASSIGNED`, `RESOURCE_NOT_FOUND`, `ROLE_ALREADY_ASSIGNED`, `SELF_ROLE_CHANGE`, `SERVICE_ACCOUNT_PROTECTED`;
   audit-service: `VALIDATION_FAILED`, `INVALID_REQUEST`, `AUDIT_EVENT_NOT_FOUND`) — komunikaty UI mapujemy po `code`, a gdy go brak, po statusie:
-  - 401 → ponowne logowanie (`httpErrorInterceptor`), 403 → `/access-denied`;
-  - 400 → błędy walidacji przy polach formularza; 404 → „Nie znaleziono”; 409 → komunikat konfliktu;
-  - 502/503/0 → „Usługa chwilowo niedostępna”;
-  - komunikaty w UI po polsku, mapowane ze statusu (nie wyświetlamy surowego `detail` z backendu, który jest po angielsku);
-  - przy błędach 5xx pokazujemy identyfikator `X-Correlation-Id` z odpowiedzi („Identyfikator zgłoszenia”) —
-    ułatwia wyszukanie w Kibanie.
+  - 401 → ponowne logowanie (`httpErrorInterceptor`); 403 bez `code` → `/access-denied`, 403 z `code` → komunikat
+    w widoku;
+  - 400 → błędy walidacji przy polach formularza; 404 → „Not found.”; 409 → komunikat konfliktu;
+  - 502/503/0 → „Service temporarily unavailable.”;
+  - komunikaty w UI po angielsku z własnego słownika (`core/http/api-error.ts`), mapowane z `code`, a bez niego
+    ze statusu; surowego `detail` z backendu nie wyświetlamy (spójność, brak szczegółów technicznych);
+  - przy błędach 5xx dokładamy identyfikator `X-Correlation-Id` z odpowiedzi („Request ID”) — ułatwia
+    wyszukanie w Kibanie (CORS eksponuje ten nagłówek).
 - Sukces operacji: `MatSnackBar` z krótkim komunikatem.
 
 ## 7. Wygląd (spec §10.3, wzorzec `docs/gui.jpg`)
@@ -188,14 +206,17 @@ Z makiety bierzemy **tylko styl i układ**:
 
 Z makiety **nie implementujemy**: tworzenia ról, szablonów ról, importu CSV, eksportu, „Pending Reviews”,
 Settings, Billing, globalnej wyszukiwarki, powiadomień, „Help & Docs”. Ponadto: rejestracja publiczna,
-reset hasła w aplikacji (robi to Keycloak), MFA, tryb ciemny, i18n (tylko polski), widok mobilny.
+reset hasła w aplikacji (robi to Keycloak), MFA, tryb ciemny, i18n (tylko angielski), widok mobilny.
 
 ## 9. Testy i jakość
 
 - Testy jednostkowe (Vitest) dla: guardów i logiki ról, interceptorów, serwisów API (`HttpTestingController`),
   formularzy (walidacja, obsługa 409), komponentów widoków (stany loading/empty/error, widoczność akcji per rola).
 - `npx ng test --watch=false` i `npx ng build` muszą przechodzić przed zakończeniem etapu.
-- Budżet bundla: ostrzeżenie 750 kB, błąd 1.5 MB (`angular.json`); nowe widoki ładowane leniwie (`loadComponent`).
+- Budżet bundla: ostrzeżenie 750 kB, błąd 1.5 MB (`angular.json`); wszystkie widoki ładowane leniwie
+  (`loadComponent`) — początkowy bundle ok. 600 kB.
+- Testy widoków korzystają z `RouterTestingHarness` (prawdziwy router, query params, binding `:id`) i stubów
+  serwisów API; wspólne helpery w `src/testing/test-helpers.ts`.
 - Dostępność: etykiety pól (`mat-label`), `aria-label` dla przycisków-ikon, kontrast tekstu, obsługa klawiatury
   w tabelach i dialogach.
 

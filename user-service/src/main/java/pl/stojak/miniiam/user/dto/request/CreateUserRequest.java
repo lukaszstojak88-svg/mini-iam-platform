@@ -13,8 +13,8 @@ public record CreateUserRequest(
         @NotBlank @Pattern(regexp = "^[A-Za-z0-9._-]{3,100}$",
                 message = "must be 3-100 characters: letters, digits, '.', '_' or '-'") String username,
         @NotBlank @Email @Size(max = 255) String email,
-        @Size(max = 100) String firstName,
-        @Size(max = 100) String lastName,
+        @NotBlank @Size(max = 100) String firstName,
+        @NotBlank @Size(max = 100) String lastName,
         @NotBlank @Size(min = 8, max = 128) String temporaryPassword) {
 
     @Override

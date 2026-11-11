@@ -10,6 +10,7 @@ public final class AuditEventMapper {
 
     public static AuditEventResponse toResponse(AuditEvent event) {
         return new AuditEventResponse(event.getId(), event.getEventType(), event.getActorUserId(),
-                event.getTargetUserId(), event.getDetails(), event.getOccurredAt(), event.getCorrelationId());
+                event.getActorUsername(), event.getTargetUserId(), event.getTargetUsername(), event.getDetails(),
+                event.getOccurredAt(), event.getCorrelationId());
     }
 }

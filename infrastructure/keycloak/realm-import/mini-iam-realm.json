@@ -15,14 +15,14 @@
   "ssoSessionMaxLifespan": 36000,
   "roles": {
     "realm": [
-      { "name": "ADMIN", "description": "Pełne zarządzanie użytkownikami, rolami i odczyt audytu" },
-      { "name": "MANAGER", "description": "Odczyt, tworzenie i edycja użytkowników" },
-      { "name": "USER", "description": "Rola bazowa: odczyt i edycja własnego profilu" },
-      { "name": "AUDITOR", "description": "Tylko odczyt zdarzeń audytowych" },
-      { "name": "SERVICE", "description": "Rola techniczna kont serwisowych (komunikacja serwis-serwis)" },
+      { "name": "ADMIN", "description": "Full management of users and roles, read access to the audit log" },
+      { "name": "MANAGER", "description": "Read, create and edit users" },
+      { "name": "USER", "description": "Base role: read and edit own profile" },
+      { "name": "AUDITOR", "description": "Read-only access to audit events" },
+      { "name": "SERVICE", "description": "Technical role of service accounts (service-to-service calls)" },
       {
         "name": "default-roles-mini-iam",
-        "description": "Role domyślne realmu",
+        "description": "Default roles of the realm",
         "composite": true,
         "composites": { "realm": ["USER"] }
       }

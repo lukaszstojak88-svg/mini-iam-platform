@@ -73,14 +73,24 @@ class AuditEventApiIT {
 
     @Test
     void recordedEventIsStoredWithCorrelationIdAndReadableByAuditor() throws Exception {
-        String id = record("ROLE_ASSIGNED", "kc-admin", "kc-user", "{\"roleName\":\"MANAGER\"}",
-                "2026-11-10T09:00:00Z", "it-corr-1");
+        String body = """
+                {"eventType":"ROLE_ASSIGNED","actorUserId":"kc-admin","actorUsername":"admin",
+                 "targetUserId":"kc-user","targetUsername":"jan","details":{"roleName":"MANAGER"},
+                 "occurredAt":"2026-11-10T09:00:00Z"}""";
+        String response = mockMvc.perform(post("/internal/api/audit-events").with(as("SERVICE"))
+                        .header("X-Correlation-Id", "it-corr-1")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String id = objectMapper.readTree(response).get("id").asText();
 
         mockMvc.perform(get("/api/audit-events/" + id).with(as("AUDITOR")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.eventType").value("ROLE_ASSIGNED"))
                 .andExpect(jsonPath("$.actorUserId").value("kc-admin"))
+                .andExpect(jsonPath("$.actorUsername").value("admin"))
                 .andExpect(jsonPath("$.targetUserId").value("kc-user"))
+                .andExpect(jsonPath("$.targetUsername").value("jan"))
                 .andExpect(jsonPath("$.details.roleName").value("MANAGER"))
                 .andExpect(jsonPath("$.occurredAt").value("2026-11-10T09:00:00Z"))
                 .andExpect(jsonPath("$.correlationId").value("it-corr-1"));
@@ -93,8 +103,12 @@ class AuditEventApiIT {
 
     @Test
     void invalidCorrelationIdIsReplacedByGeneratedOne() throws Exception {
+        // Also covers events without usernames (optional fields, e.g. sent by an older service version).
         String id = record("USER_CREATED", "kc-admin", "kc-new", "{\"username\":\"jan\"}",
                 "2026-11-10T09:00:00Z", "not valid!");
+        mockMvc.perform(get("/api/audit-events/" + id).with(as("AUDITOR")))
+                .andExpect(jsonPath("$.actorUsername").doesNotExist())
+                .andExpect(jsonPath("$.targetUsername").doesNotExist());
 
         String stored = jdbcTemplate.queryForObject(
                 "SELECT correlation_id FROM audit.audit_events WHERE id = ?::uuid", String.class, id);

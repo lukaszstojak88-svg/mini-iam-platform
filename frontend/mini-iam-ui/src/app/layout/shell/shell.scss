@@ -1,11 +1,11 @@
-// Basic layout following docs/gui.jpg (dark sidebar, light content); full theme in Stage 6.
+// Layout following docs/gui.jpg: dark sidebar, white top bar, light content area.
 .shell {
   height: 100vh;
 }
 
 .sidebar {
   width: 240px;
-  background: #111827;
+  background: var(--app-sidebar);
   color: #e5e7eb;
   border-right: none;
   // Square corners (Material 3 rounds the drawer edge by default).
@@ -17,10 +17,21 @@
   }
 
   .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 20px 24px;
     font-size: 1.25rem;
     font-weight: 600;
     color: #ffffff;
+  }
+
+  .section {
+    padding: 8px 24px;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
   }
 
   // Horizontal spacing lives on the list, not on items: a 100%-wide item with side margins
@@ -30,22 +41,35 @@
     box-sizing: border-box;
   }
 
+  // Material's default hover/focus state layer and hover text colour come from the light theme (dark on-surface),
+  // which turned items black and hid the text on the dark sidebar. Use a light overlay and keep the text light.
   a[mat-list-item] {
-    --mat-list-list-item-label-text-color: #cbd5e1;
-    --mat-list-list-item-leading-icon-color: #cbd5e1;
+    --mat-list-list-item-label-text-color: var(--app-sidebar-text);
+    --mat-list-list-item-leading-icon-color: var(--app-sidebar-text);
+    --mat-list-list-item-hover-label-text-color: #ffffff;
+    --mat-list-list-item-hover-leading-icon-color: #ffffff;
+    --mat-list-list-item-hover-state-layer-color: #ffffff;
+    --mat-list-list-item-hover-state-layer-opacity: 0.08;
+    // Focused item (e.g. right after a click) has its own label colour, dark by default.
+    --mat-list-list-item-focus-label-text-color: #ffffff;
+    --mat-list-list-item-focus-state-layer-color: #ffffff;
+    --mat-list-list-item-focus-state-layer-opacity: 0.12;
+    --mat-list-active-indicator-color: var(--app-primary);
+    --mat-list-active-indicator-shape: 8px;
+    margin-bottom: 4px;
     border-radius: 8px;
   }
 
   a.active {
-    background: #4f46e5;
+    background: var(--app-primary);
     --mat-list-list-item-label-text-color: #ffffff;
     --mat-list-list-item-leading-icon-color: #ffffff;
   }
 }
 
 .topbar {
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
   gap: 16px;
 
   .spacer {
@@ -62,7 +86,13 @@
 
 .content {
   padding: 24px 32px;
-  background: #f8fafc;
+  background: var(--app-bg);
   min-height: calc(100vh - 64px);
   box-sizing: border-box;
+}
+
+// Readable maximum width of the content (spec §10.3).
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
 }

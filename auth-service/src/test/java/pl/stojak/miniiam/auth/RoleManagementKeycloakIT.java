@@ -151,6 +151,7 @@ class RoleManagementKeycloakIT {
 
     private static boolean isRoleEvent(AuditEventRequest event, AuditEventType type, String userId) {
         return event.eventType() == type && userId.equals(event.targetUserId())
+                && event.targetUsername() != null && event.targetUsername().startsWith("it-manager-")
                 && realmAdminId.equals(event.actorUserId()) && Map.of("roleName", "MANAGER").equals(event.details());
     }
 

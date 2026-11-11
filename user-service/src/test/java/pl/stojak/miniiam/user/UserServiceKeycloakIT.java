@@ -137,7 +137,7 @@ class UserServiceKeycloakIT {
         createUser("it.duplicate");
 
         mockMvc.perform(post("/api/users").with(admin()).contentType(MediaType.APPLICATION_JSON).content("""
-                        {"username":"it.duplicate","email":"other@example.com","temporaryPassword":"Temp-Pass-123"}"""))
+                        {"username":"it.duplicate","email":"other@example.com","firstName":"Other","lastName":"User","temporaryPassword":"Temp-Pass-123"}"""))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("USERNAME_OR_EMAIL_TAKEN"));
     }
@@ -149,13 +149,13 @@ class UserServiceKeycloakIT {
         String keycloakId = created.get("keycloakId").asText();
 
         mockMvc.perform(put("/api/users/" + id).with(admin()).contentType(MediaType.APPLICATION_JSON).content("""
-                        {"email":"it.update.new@example.com","firstName":"Changed","lastName":null}"""))
+                        {"email":"it.update.new@example.com","firstName":"Changed","lastName":"Renamed"}"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("it.update.new@example.com"));
         JsonNode account = keycloakAdminGet("/users/" + keycloakId);
         assertThat(account.get("email").asText()).isEqualTo("it.update.new@example.com");
         assertThat(account.get("firstName").asText()).isEqualTo("Changed");
-        assertThat(account.path("lastName").asText("")).isEmpty();
+        assertThat(account.get("lastName").asText()).isEqualTo("Renamed");
         assertThat(account.get("emailVerified").asBoolean()).as("new e-mail must not stay verified").isFalse();
 
         mockMvc.perform(patch("/api/users/" + id + "/status").with(admin())

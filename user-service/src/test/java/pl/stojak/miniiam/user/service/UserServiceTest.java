@@ -50,8 +50,10 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
-    private static final Actor ADMIN = new Actor("kc-admin", Set.of("ADMIN", "USER"));
-    private static final Actor MANAGER = new Actor("kc-manager", Set.of("MANAGER", "USER"));
+    private static final Actor ADMIN = new Actor("kc-admin", "admin", Set.of("ADMIN", "USER"));
+    private static final Actor MANAGER = new Actor("kc-manager", "manager", Set.of("MANAGER", "USER"));
+    /** Another administrator acting on the account kc-admin (own-account changes are a separate rule). */
+    private static final Actor OTHER_ADMIN = new Actor("kc-admin-2", "admin2", Set.of("ADMIN", "USER"));
 
     @Mock
     private UserProfileRepository repository;
@@ -185,7 +187,7 @@ class UserServiceTest {
         when(keycloak.getRealmRoleMembers("ADMIN"))
                 .thenReturn(List.of(account("kc-admin", true), account("kc-disabled-admin", false)));
 
-        assertThatThrownBy(() -> service.updateStatus(admin.getId(), false, ADMIN))
+        assertThatThrownBy(() -> service.updateStatus(admin.getId(), false, OTHER_ADMIN))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .extracting("code").isEqualTo(ErrorCode.LAST_ADMIN);
         verify(keycloak, never()).setEnabled(anyString(), eq(false));
@@ -200,7 +202,7 @@ class UserServiceTest {
         when(keycloak.findUser("kc-admin")).thenReturn(Optional.of(account("kc-admin", true)));
         when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        UserResponse result = service.updateStatus(admin.getId(), false, ADMIN);
+        UserResponse result = service.updateStatus(admin.getId(), false, OTHER_ADMIN);
 
         verify(keycloak).setEnabled("kc-admin", false);
         assertThat(result.enabled()).isFalse();
@@ -267,7 +269,7 @@ class UserServiceTest {
         when(repository.findById(admin.getId())).thenReturn(Optional.of(admin));
         when(keycloak.getRealmRoleMembers("ADMIN")).thenReturn(List.of(account("kc-admin", true)));
 
-        assertThatThrownBy(() -> service.delete(admin.getId(), ADMIN))
+        assertThatThrownBy(() -> service.delete(admin.getId(), OTHER_ADMIN))
                 .isInstanceOf(BusinessRuleViolationException.class);
         verify(keycloak, never()).deleteUser(anyString());
     }
@@ -282,6 +284,25 @@ class UserServiceTest {
         service.delete(user.getId(), ADMIN);
 
         verify(repository).delete(user);
+    }
+
+    @Test
+    void ownAccountCannotBeDeactivatedOrDeleted() {
+        UserProfile mine = profile("kc-admin", true);
+        when(repository.findById(mine.getId())).thenReturn(Optional.of(mine));
+
+        assertThatThrownBy(() -> service.updateStatus(mine.getId(), false, ADMIN))
+                .isInstanceOf(OperationForbiddenException.class)
+                .satisfies(e -> assertThat(((OperationForbiddenException) e).getCode())
+                        .isEqualTo(ErrorCode.SELF_ACCOUNT_PROTECTED));
+        assertThatThrownBy(() -> service.delete(mine.getId(), ADMIN))
+                .isInstanceOf(OperationForbiddenException.class)
+                .satisfies(e -> assertThat(((OperationForbiddenException) e).getCode())
+                        .isEqualTo(ErrorCode.SELF_ACCOUNT_PROTECTED));
+
+        verify(keycloak, never()).setEnabled(anyString(), anyBoolean());
+        verify(keycloak, never()).deleteUser(anyString());
+        verifyNoInteractions(auditEventPublisher);
     }
 
     @Test
@@ -352,7 +373,7 @@ class UserServiceTest {
 
     @Test
     void serviceAccountsHaveNoProfile() {
-        assertThatThrownBy(() -> service.getOwnProfile(new Actor("kc-sa", Set.of("SERVICE"))))
+        assertThatThrownBy(() -> service.getOwnProfile(new Actor("kc-sa", "sa", Set.of("SERVICE"))))
                 .isInstanceOf(UserNotFoundException.class);
         verify(keycloak, never()).findUser(anyString());
     }
@@ -364,7 +385,7 @@ class UserServiceTest {
         when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 
         UserResponse updated = service.updateOwnProfile(
-                new UpdateProfileRequest("me@example.com", "Me", "Myself"), new Actor("kc-user", Set.of("USER")));
+                new UpdateProfileRequest("me@example.com", "Me", "Myself"), new Actor("kc-user", "user", Set.of("USER")));
 
         verify(keycloak).updateProfile("kc-user", "me@example.com", "Me", "Myself", true);
         assertThat(updated.email()).isEqualTo("me@example.com");
@@ -388,7 +409,9 @@ class UserServiceTest {
         AuditEventRequest event = publishedEvent();
         assertThat(event.eventType()).isEqualTo(AuditEventType.USER_CREATED);
         assertThat(event.actorUserId()).isEqualTo("kc-manager");
+        assertThat(event.actorUsername()).isEqualTo("manager");
         assertThat(event.targetUserId()).isEqualTo("kc-new");
+        assertThat(event.targetUsername()).isEqualTo("john.doe");
         assertThat(event.occurredAt()).isNotNull();
         // Never the temporary password, nor the e-mail.
         assertThat(event.details()).isEqualTo(Map.of("username", "john.doe"));
@@ -440,7 +463,7 @@ class UserServiceTest {
         when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.updateOwnProfile(new UpdateProfileRequest("me@example.com", "John", "Doe"),
-                new Actor("kc-user", Set.of("USER")));
+                new Actor("kc-user", "user", Set.of("USER")));
 
         AuditEventRequest event = publishedEvent();
         assertThat(event.actorUserId()).isEqualTo("kc-user");
@@ -506,7 +529,9 @@ class UserServiceTest {
         AuditEventRequest event = publishedEvent();
         assertThat(event.eventType()).isEqualTo(AuditEventType.USER_DELETED);
         assertThat(event.actorUserId()).isEqualTo("kc-admin");
+        assertThat(event.actorUsername()).isEqualTo("admin");
         assertThat(event.targetUserId()).isEqualTo("kc-user");
+        assertThat(event.targetUsername()).isEqualTo("john.doe");
         assertThat(event.details()).isEqualTo(Map.of("username", "john.doe"));
     }
 
@@ -516,7 +541,7 @@ class UserServiceTest {
         when(keycloak.findUser("kc-new")).thenReturn(Optional.of(account("kc-new", true)));
         when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        service.getOwnProfile(new Actor("kc-new", Set.of("USER")));
+        service.getOwnProfile(new Actor("kc-new", "new", Set.of("USER")));
 
         verifyNoInteractions(auditEventPublisher);
     }

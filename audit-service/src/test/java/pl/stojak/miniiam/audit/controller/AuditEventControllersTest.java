@@ -53,8 +53,8 @@ class AuditEventControllersTest {
     private static final String INTERNAL_URL = "/internal/api/audit-events";
     private static final UUID EVENT_ID = UUID.fromString("7d0f4f43-56a4-4c1e-9d0b-0a6a7e2b6c11");
     private static final String VALID_EVENT = """
-            {"eventType":"ROLE_ASSIGNED","actorUserId":"kc-admin-1","targetUserId":"kc-user-2",
-             "details":{"roleName":"MANAGER"},"occurredAt":"2026-11-10T09:00:00Z"}""";
+            {"eventType":"ROLE_ASSIGNED","actorUserId":"kc-admin-1","actorUsername":"admin",
+             "targetUserId":"kc-user-2","targetUsername":"jan","details":{"roleName":"MANAGER"},"occurredAt":"2026-11-10T09:00:00Z"}""";
 
     @Autowired
     private MockMvc mockMvc;
@@ -69,8 +69,8 @@ class AuditEventControllersTest {
     }
 
     private static AuditEventResponse sampleEvent() {
-        return new AuditEventResponse(EVENT_ID, AuditEventType.ROLE_ASSIGNED, "kc-admin-1", "kc-user-2",
-                Map.of("roleName", "MANAGER"), Instant.parse("2026-11-10T09:00:00Z"), "corr-1");
+        return new AuditEventResponse(EVENT_ID, AuditEventType.ROLE_ASSIGNED, "kc-admin-1", "admin", "kc-user-2",
+                "jan", Map.of("roleName", "MANAGER"), Instant.parse("2026-11-10T09:00:00Z"), "corr-1");
     }
 
     // ---------------------------------------------------------------- GET /api/audit-events
@@ -154,7 +154,9 @@ class AuditEventControllersTest {
         mockMvc.perform(get(LIST_URL + "/" + EVENT_ID).with(as("AUDITOR")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.actorUserId").value("kc-admin-1"))
-                .andExpect(jsonPath("$.targetUserId").value("kc-user-2"));
+                .andExpect(jsonPath("$.actorUsername").value("admin"))
+                .andExpect(jsonPath("$.targetUserId").value("kc-user-2"))
+                .andExpect(jsonPath("$.targetUsername").value("jan"));
     }
 
     @Test
@@ -238,6 +240,15 @@ class AuditEventControllersTest {
                         .content(VALID_EVENT.replace("kc-admin-1", "admin@example.com")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("actorUserId"));
+        verifyNoInteractions(auditEventService);
+    }
+
+    @Test
+    void tooLongUsernameIsRejected() throws Exception {
+        mockMvc.perform(post(INTERNAL_URL).with(as("SERVICE")).contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_EVENT.replace("\"jan\"", "\"" + "j".repeat(256) + "\"")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("targetUsername"));
         verifyNoInteractions(auditEventService);
     }
 

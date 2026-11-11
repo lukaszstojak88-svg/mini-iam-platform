@@ -72,7 +72,7 @@ class UserControllerTest {
     private UserService userService;
 
     private static RequestPostProcessor as(String... roles) {
-        return jwt().jwt(token -> token.subject("kc-caller"))
+        return jwt().jwt(token -> token.subject("kc-caller").claim("preferred_username", "caller"))
                 .authorities(Arrays.stream(roles)
                         .<GrantedAuthority>map(r -> new SimpleGrantedAuthority("ROLE_" + r)).toList());
     }
@@ -150,13 +150,13 @@ class UserControllerTest {
     }
 
     @Test
-    void actorIsBuiltFromTokenSubjectAndRoles() throws Exception {
+    void actorIsBuiltFromTokenSubjectUsernameAndRoles() throws Exception {
         when(userService.create(any(), any())).thenReturn(user());
 
         mockMvc.perform(json(post("/api/users"), CREATE_BODY).with(as("MANAGER", "USER")))
                 .andExpect(status().isCreated());
 
-        verify(userService).create(any(), eq(new Actor("kc-caller", java.util.Set.of("MANAGER", "USER"))));
+        verify(userService).create(any(), eq(new Actor("kc-caller", "caller", java.util.Set.of("MANAGER", "USER"))));
     }
 
     @Test
@@ -169,7 +169,9 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[?(@.field=='username')]").exists())
                 .andExpect(jsonPath("$.errors[?(@.field=='email')]").exists())
-                .andExpect(jsonPath("$.errors[?(@.field=='temporaryPassword')]").exists());
+                .andExpect(jsonPath("$.errors[?(@.field=='temporaryPassword')]").exists())
+                .andExpect(jsonPath("$.errors[?(@.field=='firstName')]").exists())
+                .andExpect(jsonPath("$.errors[?(@.field=='lastName')]").exists());
     }
 
     @Test

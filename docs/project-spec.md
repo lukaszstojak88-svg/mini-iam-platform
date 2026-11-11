@@ -97,6 +97,9 @@ Zasady:
 -   Nie wolno dopuścić do usunięcia lub dezaktywacji ostatniego
     aktywnego użytkownika z rolą `ADMIN`.
 -   Użytkownik nie może zmienić własnych ról.
+-   Administrator nie może dezaktywować ani usunąć własnego konta
+    (403 `SELF_ACCOUNT_PROTECTED`) --- musi to zrobić inny
+    administrator.
 -   Użytkownik może odczytywać wyłącznie własny profil, chyba że ma
     uprawnienia administracyjne.
 -   Nazwy ról są stałymi domenowymi, a nie dowolnymi wartościami
@@ -562,7 +565,9 @@ Przykładowy model zdarzenia:
 {
   "eventType": "ROLE_ASSIGNED",
   "actorUserId": "keycloak-user-id",
+  "actorUsername": "admin",
   "targetUserId": "target-keycloak-user-id",
+  "targetUsername": "jan.kowalski",
   "details": {
     "roleName": "MANAGER"
   },
@@ -651,8 +656,8 @@ Tabela `users`:
   `keycloak_id`   VARCHAR(64)    NOT NULL, UNIQUE
   `username`      VARCHAR(100)   NOT NULL
   `email`         VARCHAR(255)   NOT NULL
-  `first_name`    VARCHAR(100)   nullable
-  `last_name`     VARCHAR(100)   nullable
+  `first_name`    VARCHAR(100)   nullable (API wymaga wartości przy tworzeniu i edycji)
+  `last_name`     VARCHAR(100)   nullable (API wymaga wartości przy tworzeniu i edycji)
   `enabled`       BOOLEAN        NOT NULL
   `created_at`    TIMESTAMPTZ    NOT NULL
   `updated_at`    TIMESTAMPTZ    NOT NULL
@@ -669,12 +674,20 @@ Tabela `audit_events`:
   `event_type`       VARCHAR(64)    NOT NULL
   `actor_user_id`    VARCHAR(64)    NOT NULL
   `target_user_id`   VARCHAR(64)    nullable
+  `actor_username`   VARCHAR(255)   nullable
+  `target_username`  VARCHAR(255)   nullable
   `details`          JSONB          NOT NULL
   `occurred_at`      TIMESTAMPTZ    NOT NULL
   `correlation_id`   VARCHAR(100)   nullable
 
 `correlation_id` to wartość nagłówka `X-Correlation-Id` żądania, które
 spowodowało zdarzenie (patrz §16.2).
+
+`actor_username` i `target_username` to nazwy użytkowników w chwili
+zdarzenia (aktor z claimu `preferred_username`, cel z profilu lub konta
+Keycloak). Dzięki nim dziennik jest czytelny także po usunięciu konta i dla
+AUDITOR-a, który nie ma dostępu do user-service. Kolumny są nullable, bo
+zdarzenia zapisane przed ich dodaniem (changeset `002`) nie mają nazw.
 
 ### 8.3 Auth Service
 

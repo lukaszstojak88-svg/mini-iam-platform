@@ -64,7 +64,7 @@ public class RoleService {
         return new UserRolesResponse(id, applicationRoles(keycloak.getEffectiveRealmRoles(id)));
     }
 
-    public UserRolesResponse assignRole(String userId, String roleName, String actorId) {
+    public UserRolesResponse assignRole(String userId, String roleName, String actorId, String actorUsername) {
         AppRole role = assignableRole(roleName);
         ensureNotSelf(userId, actorId);
         KeycloakUser user = requireUser(userId);
@@ -81,11 +81,11 @@ public class RoleService {
 
         keycloak.addRealmRole(id, realmRole);
         log.info("Role {} assigned to {} by {}", role, id, actorId);
-        audit(AuditEventType.ROLE_ASSIGNED, actorId, id, role);
+        audit(AuditEventType.ROLE_ASSIGNED, actorId, actorUsername, user, role);
         return new UserRolesResponse(id, applicationRoles(keycloak.getEffectiveRealmRoles(id)));
     }
 
-    public void removeRole(String userId, String roleName, String actorId) {
+    public void removeRole(String userId, String roleName, String actorId, String actorUsername) {
         AppRole role = assignableRole(roleName);
         ensureNotSelf(userId, actorId);
         KeycloakUser user = requireUser(userId);
@@ -103,14 +103,15 @@ public class RoleService {
 
         keycloak.removeRealmRole(id, mapping);
         log.info("Role {} removed from {} by {}", role, id, actorId);
-        audit(AuditEventType.ROLE_REMOVED, actorId, id, role);
+        audit(AuditEventType.ROLE_REMOVED, actorId, actorUsername, user, role);
     }
 
     // ---------------------------------------------------------------- rules and helpers
 
-    private void audit(AuditEventType type, String actorId, String targetId, AppRole role) {
-        auditEventPublisher.publish(new AuditEventRequest(type, actorId, targetId,
-                Map.of("roleName", role.name()), Instant.now()));
+    private void audit(AuditEventType type, String actorId, String actorUsername, KeycloakUser target,
+                       AppRole role) {
+        auditEventPublisher.publish(new AuditEventRequest(type, actorId, actorUsername, target.id(),
+                target.username(), Map.of("roleName", role.name()), Instant.now()));
     }
 
     private static AppRole assignableRole(String roleName) {

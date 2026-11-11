@@ -33,6 +33,7 @@ import static org.mockito.Mockito.when;
 class RoleServiceTest {
 
     private static final String ACTOR = "kc-admin";
+    private static final String ACTOR_NAME = "admin";
     private static final String TARGET = "kc-target";
 
     private static final KeycloakRole ADMIN = new KeycloakRole("r-admin", "ADMIN", "Admin");
@@ -54,7 +55,7 @@ class RoleServiceTest {
     }
 
     private static KeycloakUser user(String id, boolean enabled) {
-        return new KeycloakUser(id, id, enabled);
+        return new KeycloakUser(id, "name-" + id, enabled);
     }
 
     private void targetExistsWithEffectiveRoles(KeycloakRole... roles) {
@@ -112,7 +113,7 @@ class RoleServiceTest {
                 .thenReturn(List.of(DEFAULT_ROLES, USER, MANAGER));
         when(keycloak.findRealmRole("MANAGER")).thenReturn(Optional.of(MANAGER));
 
-        var result = service.assignRole(TARGET, "MANAGER", ACTOR);
+        var result = service.assignRole(TARGET, "MANAGER", ACTOR, ACTOR_NAME);
 
         verify(keycloak).addRealmRole(TARGET, MANAGER);
         assertThat(result.userId()).isEqualTo(TARGET);
@@ -120,7 +121,9 @@ class RoleServiceTest {
         AuditEventRequest event = publishedEvent();
         assertThat(event.eventType()).isEqualTo(AuditEventType.ROLE_ASSIGNED);
         assertThat(event.actorUserId()).isEqualTo(ACTOR);
+        assertThat(event.actorUsername()).isEqualTo(ACTOR_NAME);
         assertThat(event.targetUserId()).isEqualTo(TARGET);
+        assertThat(event.targetUsername()).isEqualTo("name-" + TARGET);
         assertThat(event.details()).isEqualTo(Map.of("roleName", "MANAGER"));
         assertThat(event.occurredAt()).isNotNull();
     }
@@ -134,7 +137,7 @@ class RoleServiceTest {
         when(keycloak.findRealmRole("AUDITOR")).thenReturn(Optional.of(AUDITOR));
         when(auditEventPublisher.publish(any())).thenReturn(false);
 
-        var result = service.assignRole(TARGET, "AUDITOR", ACTOR);
+        var result = service.assignRole(TARGET, "AUDITOR", ACTOR, ACTOR_NAME);
 
         assertThat(result.roles()).containsExactly(AppRole.USER, AppRole.AUDITOR);
     }
@@ -142,18 +145,18 @@ class RoleServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"USER", "SERVICE", "default-roles-mini-iam", "manager", "SUPERUSER"})
     void onlyAdminManagerAuditorCanBeAssignedOrRemoved(String roleName) {
-        assertThatThrownBy(() -> service.assignRole(TARGET, roleName, ACTOR))
+        assertThatThrownBy(() -> service.assignRole(TARGET, roleName, ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.ROLE_NOT_ASSIGNABLE));
-        assertThatThrownBy(() -> service.removeRole(TARGET, roleName, ACTOR))
+        assertThatThrownBy(() -> service.removeRole(TARGET, roleName, ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.ROLE_NOT_ASSIGNABLE));
         verifyNoInteractions(keycloak);
     }
 
     @Test
     void cannotChangeOwnRoles() {
-        assertThatThrownBy(() -> service.assignRole(ACTOR, "AUDITOR", ACTOR))
+        assertThatThrownBy(() -> service.assignRole(ACTOR, "AUDITOR", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.SELF_ROLE_CHANGE));
-        assertThatThrownBy(() -> service.removeRole(ACTOR, "ADMIN", ACTOR))
+        assertThatThrownBy(() -> service.removeRole(ACTOR, "ADMIN", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.SELF_ROLE_CHANGE));
         verifyNoInteractions(keycloak);
     }
@@ -163,9 +166,9 @@ class RoleServiceTest {
         // A path variant (e.g. different letter case) that Keycloak resolves to the caller's own account.
         when(keycloak.findUser("KC-ADMIN")).thenReturn(Optional.of(user(ACTOR, true)));
 
-        assertThatThrownBy(() -> service.removeRole("KC-ADMIN", "ADMIN", ACTOR))
+        assertThatThrownBy(() -> service.removeRole("KC-ADMIN", "ADMIN", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.SELF_ROLE_CHANGE));
-        assertThatThrownBy(() -> service.assignRole("KC-ADMIN", "AUDITOR", ACTOR))
+        assertThatThrownBy(() -> service.assignRole("KC-ADMIN", "AUDITOR", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.SELF_ROLE_CHANGE));
         verify(keycloak, never()).removeRealmRole(anyString(), any());
         verify(keycloak, never()).addRealmRole(anyString(), any());
@@ -175,7 +178,7 @@ class RoleServiceTest {
     void assigningToMissingUserGives404() {
         when(keycloak.findUser(TARGET)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.assignRole(TARGET, "MANAGER", ACTOR))
+        assertThatThrownBy(() -> service.assignRole(TARGET, "MANAGER", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.USER_NOT_FOUND));
     }
 
@@ -183,7 +186,7 @@ class RoleServiceTest {
     void duplicateAssignmentIsConflict() {
         targetExistsWithEffectiveRoles(USER, MANAGER);
 
-        assertThatThrownBy(() -> service.assignRole(TARGET, "MANAGER", ACTOR))
+        assertThatThrownBy(() -> service.assignRole(TARGET, "MANAGER", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.ROLE_ALREADY_ASSIGNED));
         verify(keycloak, never()).addRealmRole(anyString(), any());
     }
@@ -193,7 +196,7 @@ class RoleServiceTest {
         targetExistsWithEffectiveRoles(USER);
         when(keycloak.findRealmRole("AUDITOR")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.assignRole(TARGET, "AUDITOR", ACTOR))
+        assertThatThrownBy(() -> service.assignRole(TARGET, "AUDITOR", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.ROLE_NOT_FOUND));
     }
 
@@ -202,9 +205,9 @@ class RoleServiceTest {
         when(keycloak.findUser(TARGET)).thenReturn(Optional.of(new KeycloakUser(TARGET, "svc", true)));
         when(keycloak.getEffectiveRealmRoles(TARGET)).thenReturn(List.of(SERVICE));
 
-        assertThatThrownBy(() -> service.assignRole(TARGET, "ADMIN", ACTOR))
+        assertThatThrownBy(() -> service.assignRole(TARGET, "ADMIN", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.SERVICE_ACCOUNT_PROTECTED));
-        assertThatThrownBy(() -> service.removeRole(TARGET, "ADMIN", ACTOR))
+        assertThatThrownBy(() -> service.removeRole(TARGET, "ADMIN", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.SERVICE_ACCOUNT_PROTECTED));
         verify(keycloak, never()).addRealmRole(anyString(), any());
         verify(keycloak, never()).removeRealmRole(anyString(), any());
@@ -214,7 +217,7 @@ class RoleServiceTest {
     void accountWithServiceRoleIsProtectedEvenWithoutClientLink() {
         targetExistsWithEffectiveRoles(USER, SERVICE);
 
-        assertThatThrownBy(() -> service.assignRole(TARGET, "MANAGER", ACTOR))
+        assertThatThrownBy(() -> service.assignRole(TARGET, "MANAGER", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.SERVICE_ACCOUNT_PROTECTED));
     }
 
@@ -225,13 +228,14 @@ class RoleServiceTest {
         targetExistsWithEffectiveRoles(USER, AUDITOR);
         when(keycloak.getDirectRealmRoles(TARGET)).thenReturn(List.of(DEFAULT_ROLES, AUDITOR));
 
-        service.removeRole(TARGET, "AUDITOR", ACTOR);
+        service.removeRole(TARGET, "AUDITOR", ACTOR, ACTOR_NAME);
 
         verify(keycloak).removeRealmRole(TARGET, AUDITOR);
         verify(keycloak, never()).getRealmRoleMembers(anyString());
         AuditEventRequest event = publishedEvent();
         assertThat(event.eventType()).isEqualTo(AuditEventType.ROLE_REMOVED);
         assertThat(event.targetUserId()).isEqualTo(TARGET);
+        assertThat(event.targetUsername()).isEqualTo("name-" + TARGET);
         assertThat(event.details()).isEqualTo(Map.of("roleName", "AUDITOR"));
     }
 
@@ -240,7 +244,7 @@ class RoleServiceTest {
         targetExistsWithEffectiveRoles(USER);
         when(keycloak.getDirectRealmRoles(TARGET)).thenReturn(List.of(DEFAULT_ROLES));
 
-        assertThatThrownBy(() -> service.removeRole(TARGET, "MANAGER", ACTOR))
+        assertThatThrownBy(() -> service.removeRole(TARGET, "MANAGER", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.ROLE_NOT_ASSIGNED));
     }
 
@@ -251,7 +255,7 @@ class RoleServiceTest {
         // Only enabled direct members count; the disabled administrator does not.
         when(keycloak.getRealmRoleMembers("ADMIN")).thenReturn(List.of(user(TARGET, true), user("kc-old", false)));
 
-        assertThatThrownBy(() -> service.removeRole(TARGET, "ADMIN", ACTOR))
+        assertThatThrownBy(() -> service.removeRole(TARGET, "ADMIN", ACTOR, ACTOR_NAME))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.LAST_ADMIN));
         verify(keycloak, never()).removeRealmRole(anyString(), any());
         // Rejected operations are not audited.
@@ -264,7 +268,7 @@ class RoleServiceTest {
         when(keycloak.getDirectRealmRoles(TARGET)).thenReturn(List.of(ADMIN));
         when(keycloak.getRealmRoleMembers("ADMIN")).thenReturn(List.of(user(TARGET, true), user(ACTOR, true)));
 
-        service.removeRole(TARGET, "ADMIN", ACTOR);
+        service.removeRole(TARGET, "ADMIN", ACTOR, ACTOR_NAME);
 
         verify(keycloak).removeRealmRole(TARGET, ADMIN);
     }
@@ -276,7 +280,7 @@ class RoleServiceTest {
         when(keycloak.getDirectRealmRoles(TARGET)).thenReturn(List.of(ADMIN));
         when(keycloak.getRealmRoleMembers("ADMIN")).thenReturn(List.of(user(TARGET, false), user(ACTOR, true)));
 
-        service.removeRole(TARGET, "ADMIN", ACTOR);
+        service.removeRole(TARGET, "ADMIN", ACTOR, ACTOR_NAME);
 
         verify(keycloak).removeRealmRole(TARGET, ADMIN);
     }

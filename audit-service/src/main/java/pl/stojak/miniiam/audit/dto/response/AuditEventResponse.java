@@ -10,7 +10,9 @@ public record AuditEventResponse(
         UUID id,
         AuditEventType eventType,
         String actorUserId,
+        String actorUsername,
         String targetUserId,
+        String targetUsername,
         Map<String, Object> details,
         Instant occurredAt,
         String correlationId) {
