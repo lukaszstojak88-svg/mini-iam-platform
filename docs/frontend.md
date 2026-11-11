@@ -166,6 +166,9 @@ Z makiety bierzemy **tylko styl i układ**:
   font Roboto (domyślny Material).
 - Brak poziomego przewijania układu (sidebar ma `overflow-x: hidden`). Minimalna obsługiwana szerokość: 1280 px
   (aplikacja administracyjna, desktop); poniżej sidebar może się zwijać — bez dedykowanego widoku mobilnego w MVP.
+- Treść nie może wychodzić poza karty przy wąskim oknie: kolumny gridu z wartościami jako `minmax(0, 1fr)`,
+  długie wartości (e-mail, ID) z `overflow-wrap: anywhere`; listy etykieta–wartość w kartach przechodzą
+  w jedną kolumnę przez container query (`container-type: inline-size` na karcie).
 
 ## 8. Poza zakresem MVP
 

@@ -20,6 +20,8 @@
 
 mat-card {
   max-width: 720px;
+  // Lets .details adapt to the card width rather than the viewport (sidebar takes part of it).
+  container-type: inline-size;
 }
 
 .error {
@@ -28,7 +30,8 @@ mat-card {
 
 .details {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  // minmax(0, 1fr): without it the column grows to fit long values (e-mail, ID) and overflows the card.
+  grid-template-columns: 140px minmax(0, 1fr);
   row-gap: 12px;
   margin: 16px 0 0;
 
@@ -38,6 +41,19 @@ mat-card {
 
   dd {
     margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+// Narrow card: label above value.
+@container (max-width: 400px) {
+  .details {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+
+    dd {
+      margin-bottom: 12px;
+    }
   }
 }
 
