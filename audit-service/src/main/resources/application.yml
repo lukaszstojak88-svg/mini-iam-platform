@@ -20,6 +20,11 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/mini-iam}
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/mini-iam/protocol/openid-connect/certs}
           audiences: ${KEYCLOAK_AUDIENCE:mini-iam-api}
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+        default-page-size: 20
   datasource:
     url: ${AUDIT_SERVICE_DB_URL:jdbc:postgresql://localhost:5432/mini_iam}
     username: ${AUDIT_SERVICE_DB_USERNAME:audit_service}

@@ -4,15 +4,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import pl.stojak.miniiam.auth.domain.AppRole;
 import pl.stojak.miniiam.auth.dto.response.RoleResponse;
 import pl.stojak.miniiam.auth.exception.DomainException;
 import pl.stojak.miniiam.auth.exception.ErrorCode;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventPublisher;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventRequest;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventType;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakAdminClient;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakRole;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakUser;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,12 +43,14 @@ class RoleServiceTest {
     private static final KeycloakRole DEFAULT_ROLES = new KeycloakRole("r-def", "default-roles-mini-iam", "Default");
 
     private KeycloakAdminClient keycloak;
+    private AuditEventPublisher auditEventPublisher;
     private RoleService service;
 
     @BeforeEach
     void setUp() {
         keycloak = mock(KeycloakAdminClient.class);
-        service = new RoleService(keycloak);
+        auditEventPublisher = mock(AuditEventPublisher.class);
+        service = new RoleService(keycloak, auditEventPublisher);
     }
 
     private static KeycloakUser user(String id, boolean enabled) {
@@ -53,6 +60,12 @@ class RoleServiceTest {
     private void targetExistsWithEffectiveRoles(KeycloakRole... roles) {
         when(keycloak.findUser(TARGET)).thenReturn(Optional.of(user(TARGET, true)));
         when(keycloak.getEffectiveRealmRoles(TARGET)).thenReturn(List.of(roles));
+    }
+
+    private AuditEventRequest publishedEvent() {
+        ArgumentCaptor<AuditEventRequest> event = ArgumentCaptor.forClass(AuditEventRequest.class);
+        verify(auditEventPublisher).publish(event.capture());
+        return event.getValue();
     }
 
     private static ErrorCode codeOf(Throwable e) {
@@ -104,6 +117,26 @@ class RoleServiceTest {
         verify(keycloak).addRealmRole(TARGET, MANAGER);
         assertThat(result.userId()).isEqualTo(TARGET);
         assertThat(result.roles()).containsExactly(AppRole.MANAGER, AppRole.USER);
+        AuditEventRequest event = publishedEvent();
+        assertThat(event.eventType()).isEqualTo(AuditEventType.ROLE_ASSIGNED);
+        assertThat(event.actorUserId()).isEqualTo(ACTOR);
+        assertThat(event.targetUserId()).isEqualTo(TARGET);
+        assertThat(event.details()).isEqualTo(Map.of("roleName", "MANAGER"));
+        assertThat(event.occurredAt()).isNotNull();
+    }
+
+    @Test
+    void failedAuditDoesNotFailTheAssignment() {
+        when(keycloak.findUser(TARGET)).thenReturn(Optional.of(user(TARGET, true)));
+        when(keycloak.getEffectiveRealmRoles(TARGET))
+                .thenReturn(List.of(USER))
+                .thenReturn(List.of(USER, AUDITOR));
+        when(keycloak.findRealmRole("AUDITOR")).thenReturn(Optional.of(AUDITOR));
+        when(auditEventPublisher.publish(any())).thenReturn(false);
+
+        var result = service.assignRole(TARGET, "AUDITOR", ACTOR);
+
+        assertThat(result.roles()).containsExactly(AppRole.USER, AppRole.AUDITOR);
     }
 
     @ParameterizedTest
@@ -196,6 +229,10 @@ class RoleServiceTest {
 
         verify(keycloak).removeRealmRole(TARGET, AUDITOR);
         verify(keycloak, never()).getRealmRoleMembers(anyString());
+        AuditEventRequest event = publishedEvent();
+        assertThat(event.eventType()).isEqualTo(AuditEventType.ROLE_REMOVED);
+        assertThat(event.targetUserId()).isEqualTo(TARGET);
+        assertThat(event.details()).isEqualTo(Map.of("roleName", "AUDITOR"));
     }
 
     @Test
@@ -217,6 +254,8 @@ class RoleServiceTest {
         assertThatThrownBy(() -> service.removeRole(TARGET, "ADMIN", ACTOR))
                 .satisfies(e -> assertThat(codeOf(e)).isEqualTo(ErrorCode.LAST_ADMIN));
         verify(keycloak, never()).removeRealmRole(anyString(), any());
+        // Rejected operations are not audited.
+        verifyNoInteractions(auditEventPublisher);
     }
 
     @Test

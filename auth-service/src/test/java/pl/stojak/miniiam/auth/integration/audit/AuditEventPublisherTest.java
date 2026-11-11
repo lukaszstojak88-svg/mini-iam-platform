@@ -7,7 +7,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
+import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cloud.openfeign.FeignAutoConfiguration;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
@@ -30,27 +36,34 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * The real Feign client (Spring Cloud OpenFeign context, timeouts from configuration) against a local HTTP server
- * standing in for audit-service.
+ * standing in for audit-service. Recording is best effort: failures are reported by the return value,
+ * never thrown. Only the Feign/HTTP part of the application is started (no database, no Keycloak).
  */
-@SpringBootTest(properties = {
-        "spring.security.oauth2.client.registration.keycloak-admin.client-secret=unused-in-this-test",
+@SpringBootTest(classes = AuditEventPublisherTest.FeignOnly.class, properties = {
+        "spring.cloud.openfeign.client.config.audit-service.connect-timeout=2000",
         "spring.cloud.openfeign.client.config.audit-service.read-timeout=500"
 })
 class AuditEventPublisherTest {
+
+    @Configuration
+    @ImportAutoConfiguration({JacksonAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class,
+            FeignAutoConfiguration.class})
+    @Import({AuditFeignConfig.class, AuditEventPublisher.class})
+    static class FeignOnly {
+    }
 
     private static final HttpServer SERVER = startServer();
     private static final List<RecordedRequest> REQUESTS = new CopyOnWriteArrayList<>();
     private static final AtomicInteger RESPONSE_STATUS = new AtomicInteger(201);
     private static final AtomicLong RESPONSE_DELAY_MS = new AtomicLong(0);
 
-    private static final AuditEventRequest EVENT = new AuditEventRequest("ROLE_ASSIGNED", "kc-admin", "kc-user",
-            Map.of("roleName", "MANAGER"), Instant.parse("2026-11-10T09:00:00Z"));
+    private static final AuditEventRequest EVENT = new AuditEventRequest(AuditEventType.ROLE_ASSIGNED, "kc-admin",
+            "kc-user", Map.of("roleName", "MANAGER"), Instant.parse("2026-11-10T09:00:00Z"));
 
     record RecordedRequest(String method, String path, String authorization, String correlationId, String body) {
     }
@@ -89,7 +102,7 @@ class AuditEventPublisherTest {
     void sendsEventWithServiceTokenAndCorrelationIdOfCurrentRequest() {
         MDC.put(CorrelationIdFilter.MDC_KEY, "corr-123");
 
-        publisher.publish(EVENT);
+        assertThat(publisher.publish(EVENT)).isTrue();
 
         assertThat(REQUESTS).hasSize(1);
         RecordedRequest request = REQUESTS.getFirst();
@@ -112,35 +125,36 @@ class AuditEventPublisherTest {
     }
 
     @Test
-    void serverErrorIsUnavailableAndNotRetried() {
+    void serverErrorIsReportedAndNotRetried() {
         RESPONSE_STATUS.set(503);
 
-        assertThatThrownBy(() -> publisher.publish(EVENT)).isInstanceOf(AuditUnavailableException.class);
+        assertThat(publisher.publish(EVENT)).isFalse();
         assertThat(REQUESTS).hasSize(1);
     }
 
     @Test
-    void rejectedRequestIsIntegrationError() {
+    void rejectedRequestIsReportedAndInvalidatesToken() {
         RESPONSE_STATUS.set(403);
 
-        assertThatThrownBy(() -> publisher.publish(EVENT)).isInstanceOf(AuditIntegrationException.class);
+        assertThat(publisher.publish(EVENT)).isFalse();
         // A rejected service token is dropped from the cache, so the next call obtains a fresh one.
         verify(tokenProvider).invalidate();
     }
 
     @Test
-    void tokenEndpointServerErrorIsUnavailable() {
+    void tokenEndpointServerErrorIsReported() {
         when(tokenProvider.accessToken()).thenThrow(new OAuth2AuthorizationException(
                 new OAuth2Error("invalid_token_response"), new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE)));
 
-        assertThatThrownBy(() -> publisher.publish(EVENT)).isInstanceOf(AuditUnavailableException.class);
+        assertThat(publisher.publish(EVENT)).isFalse();
+        assertThat(REQUESTS).isEmpty();
     }
 
     @Test
-    void readTimeoutIsUnavailableAndNotRetried() {
+    void readTimeoutIsReportedAndNotRetried() {
         RESPONSE_DELAY_MS.set(1500);
 
-        assertThatThrownBy(() -> publisher.publish(EVENT)).isInstanceOf(AuditUnavailableException.class);
+        assertThat(publisher.publish(EVENT)).isFalse();
         assertThat(REQUESTS).hasSize(1);
     }
 
@@ -149,7 +163,7 @@ class AuditEventPublisherTest {
         when(tokenProvider.accessToken())
                 .thenThrow(new OAuth2AuthorizationException(new OAuth2Error("invalid_client")));
 
-        assertThatThrownBy(() -> publisher.publish(EVENT)).isInstanceOf(AuditIntegrationException.class);
+        assertThat(publisher.publish(EVENT)).isFalse();
         assertThat(REQUESTS).isEmpty();
     }
 

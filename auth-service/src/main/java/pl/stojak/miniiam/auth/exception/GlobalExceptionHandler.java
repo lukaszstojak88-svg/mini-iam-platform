@@ -17,8 +17,6 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
-import pl.stojak.miniiam.auth.integration.audit.AuditIntegrationException;
-import pl.stojak.miniiam.auth.integration.audit.AuditUnavailableException;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakConfigurationException;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakNotFoundException;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakUnavailableException;
@@ -59,20 +57,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         log.error("Keycloak integration error: {}", e.getMessage());
         return problem(HttpStatus.BAD_GATEWAY, ErrorCode.KEYCLOAK_INTEGRATION_ERROR,
                 "The identity provider rejected the request.");
-    }
-
-    @ExceptionHandler(AuditUnavailableException.class)
-    ProblemDetail handleAuditUnavailable(AuditUnavailableException e) {
-        log.error("audit-service unavailable: {}", e.getMessage());
-        return problem(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.AUDIT_UNAVAILABLE,
-                "The audit service is temporarily unavailable. Try again later.");
-    }
-
-    @ExceptionHandler(AuditIntegrationException.class)
-    ProblemDetail handleAuditIntegration(AuditIntegrationException e) {
-        log.error("audit-service integration error: {}", e.getMessage());
-        return problem(HttpStatus.BAD_GATEWAY, ErrorCode.AUDIT_INTEGRATION_ERROR,
-                "The audit service rejected the request.");
     }
 
     @ExceptionHandler(Exception.class)

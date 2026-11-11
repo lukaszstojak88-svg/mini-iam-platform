@@ -822,7 +822,175 @@
       ]
     },
     {
-      "name": "04 Bezpieczeństwo (negatywne)",
+      "name": "04 audit-service",
+      "description": "Dziennik audytu (spec §6.3) — tylko odczyt, role `ADMIN` i `AUDITOR`. Zdarzenia zapisują user-service i auth-service przez `/internal/api/audit-events` (token serwisowy z rolą `SERVICE`). `actorUserId`/`targetUserId` = keycloakId. Filtry: `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie) w ISO-8601; sortowanie `occurredAt` / `eventType`, domyślnie `occurredAt,desc`; `size` ≤ 100.",
+      "item": [
+        {
+          "id": "323f2b68-81cc-5149-adcc-3a96523a4504",
+          "name": "Lista zdarzeń",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auditServiceUrl}}/api/audit-events?page=0&size=20&sort=occurredAt,desc",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-events"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "sort",
+                  "value": "occurredAt,desc"
+                }
+              ]
+            },
+            "description": "ADMIN, AUDITOR. Najnowsze zdarzenia. Ustawia `auditEventId` (pierwsze z listy)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const page = pm.response.json();",
+                  "if (page.content.length > 0) { pm.environment.set('auditEventId', page.content[0].id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "385d93fa-5e24-5501-92db-f5b4391dee29",
+          "name": "Zdarzenia użytkownika",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auditServiceUrl}}/api/audit-events?targetUserId={{keycloakId}}&sort=occurredAt,asc",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-events"
+              ],
+              "query": [
+                {
+                  "key": "targetUserId",
+                  "value": "{{keycloakId}}"
+                },
+                {
+                  "key": "sort",
+                  "value": "occurredAt,asc"
+                }
+              ]
+            },
+            "description": "ADMIN, AUDITOR. Historia konta utworzonego w folderze 02 (filtr `targetUserId` = `{{keycloakId}}`): `USER_CREATED`, `USER_UPDATED`, `USER_DEACTIVATED`, `USER_ACTIVATED`, `ROLE_ASSIGNED`, `ROLE_REMOVED`. `correlationId` każdego wpisu = `X-Correlation-Id` żądania, które je spowodowało."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('USER_CREATED recorded', () => pm.expect(pm.response.json().content.map(e => e.eventType)).to.include('USER_CREATED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "b883a4bb-fa14-565a-9111-1adbaccafe94",
+          "name": "Zdarzenia typu z zakresu dat",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auditServiceUrl}}/api/audit-events?eventType=ROLE_ASSIGNED&from=2026-01-01T00:00:00Z&to=2100-01-01T00:00:00Z",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-events"
+              ],
+              "query": [
+                {
+                  "key": "eventType",
+                  "value": "ROLE_ASSIGNED"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2100-01-01T00:00:00Z"
+                }
+              ]
+            },
+            "description": "ADMIN, AUDITOR. Filtr typu i zakresu dat `[from, to)` (ISO-8601, UTC)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "b53d44a6-0b98-59e9-ac05-fb056cc0dba6",
+          "name": "Szczegóły zdarzenia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auditServiceUrl}}/api/audit-events/{{auditEventId}}",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-events",
+                "{{auditEventId}}"
+              ]
+            },
+            "description": "ADMIN, AUDITOR. Nieznane id → 404 `AUDIT_EVENT_NOT_FOUND`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Bezpieczeństwo (negatywne)",
       "description": "Oczekiwane odmowy dostępu (spec §12.3). Część requestów wymaga tokena serwisowego z folderu *00 Tokeny*, pozostałe — tokena ADMIN z kolekcji.",
       "item": [
         {
@@ -1058,11 +1226,124 @@
               }
             }
           ]
+        },
+        {
+          "id": "803afa4b-59d4-5875-a337-ee6f62474724",
+          "name": "Bez tokena na /api/audit-events → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auditServiceUrl}}/api/audit-events",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-events"
+              ]
+            },
+            "description": "Odczyt audytu wymaga uwierzytelnienia.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 401', () => pm.expect(pm.response.code).to.be.oneOf([401]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "f6ae87b6-5e42-5a58-8516-77acb3f6907f",
+          "name": "Token serwisowy na /api/audit-events → 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auditServiceUrl}}/api/audit-events",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-events"
+              ]
+            },
+            "description": "Odczyt audytu tylko dla ADMIN i AUDITOR; rola `SERVICE` nie wystarcza.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{serviceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "86dafd55-f892-5d62-8e8d-7c4b1b892159",
+          "name": "Token użytkownika na /internal/api/audit-events → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{auditServiceUrl}}/internal/api/audit-events",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "internal",
+                "api",
+                "audit-events"
+              ]
+            },
+            "description": "Endpoint wewnętrzny wymaga roli `SERVICE` (Client Credentials); token ADMIN-a nie wystarcza.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"eventType\": \"USER_CREATED\", \"actorUserId\": \"postman\", \"details\": {}, \"occurredAt\": \"2026-11-10T09:00:00Z\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "05 Sprzątanie",
+      "name": "06 Sprzątanie",
       "description": "Na końcu, żeby requesty z folderów 03-04 miały istniejące konto `{{keycloakId}}`.",
       "item": [
         {
@@ -1092,6 +1373,47 @@
                 "exec": [
                   "pm.test('HTTP 204', () => pm.expect(pm.response.code).to.be.oneOf([204]));",
                   "pm.environment.unset('newUsername');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "6f31ff2f-e668-50b2-aaaf-cf25f233f27d",
+          "name": "Zdarzenie usunięcia w audycie",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{auditServiceUrl}}/api/audit-events?targetUserId={{keycloakId}}&eventType=USER_DELETED",
+              "host": [
+                "{{auditServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-events"
+              ],
+              "query": [
+                {
+                  "key": "targetUserId",
+                  "value": "{{keycloakId}}"
+                },
+                {
+                  "key": "eventType",
+                  "value": "USER_DELETED"
+                }
+              ]
+            },
+            "description": "ADMIN, AUDITOR. Wpis `USER_DELETED` usuniętego konta (z `details.username`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('USER_DELETED recorded', () => pm.expect(pm.response.json().totalElements).to.eql(1));"
                 ]
               }
             }

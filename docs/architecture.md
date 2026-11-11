@@ -39,5 +39,21 @@ user/auth/audit-service ── stdout JSON/ECS ──> Filebeat ──> Logstash
 `CorrelationIdFilter` w każdym serwisie (osobna kopia — brak współdzielonego modułu): przyjmuje poprawny
 `X-Correlation-Id` (`[A-Za-z0-9_-]{1,100}`) lub generuje UUID, umieszcza go w MDC (`correlationId`)
 i w nagłówku odpowiedzi. Propagacja: `CorrelationIdRequestInterceptor` (Feign) dodaje bieżący `correlationId`
-z MDC do każdego wywołania serwis–serwis (poza kontekstem żądania generuje nowy UUID). Klient Feign
-auth-service → audit-service istnieje od Etapu 4; wysyłanie zdarzeń — Etap 5.
+z MDC do każdego wywołania serwis–serwis (poza kontekstem żądania generuje nowy UUID). audit-service zapisuje
+otrzymany identyfikator w kolumnie `correlation_id`, więc wpis audytu, logi wszystkich serwisów i Kibana łączą się
+jednym `correlationId`.
+
+## Przepływ zdarzenia audytowego (Etap 5)
+
+```
+ADMIN ──PUT /api/users/{id}──> user-service ──Admin API──> Keycloak
+                                    │ zapis profilu (schemat users)
+                                    │ po sukcesie: AuditEventPublisher (Feign, token Client Credentials, ROLE_SERVICE,
+                                    │              X-Correlation-Id z MDC, timeouty 2 s/2 s, bez retry)  
+                                    └──POST /internal/api/audit-events──> audit-service ──> audit.audit_events
+```
+
+auth-service działa tak samo dla `ROLE_ASSIGNED` / `ROLE_REMOVED`. Zapis audytu jest **best effort**: błąd
+audit-service nie przerywa operacji, która już się wykonała (2xx), tylko daje ERROR w logu
+(`Audit event NOT recorded`) z typem, aktorem, celem i `correlationId`. Odczyt: `GET /api/audit-events`
+(ADMIN, AUDITOR).

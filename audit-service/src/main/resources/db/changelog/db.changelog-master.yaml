@@ -1,3 +1,6 @@
 # audit-service changelog (`audit` schema).
-# Add migrations as new files in changes/ (e.g. 001-create-audit-events-table.yaml in Stage 5).
-databaseChangeLog: []
+# Add migrations as new files in changes/ and never edit changesets that were already applied.
+databaseChangeLog:
+  - include:
+      file: changes/001-create-audit-events-table.yaml
+      relativeToChangelogFile: true

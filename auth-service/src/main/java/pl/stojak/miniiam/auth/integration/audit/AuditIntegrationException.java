@@ -1,9 +1,9 @@
 package pl.stojak.miniiam.auth.integration.audit;
 
-/** audit-service rejected the request (4xx) or the service token could not be obtained (HTTP 502 for the caller). */
-public class AuditIntegrationException extends RuntimeException {
+/** audit-service rejected the request (4xx) or the service token was rejected (internal to {@link AuditEventPublisher}). */
+class AuditIntegrationException extends RuntimeException {
 
-    public AuditIntegrationException(String message, Throwable cause) {
+    AuditIntegrationException(String message, Throwable cause) {
         super(message, cause);
     }
 }

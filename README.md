@@ -8,10 +8,10 @@ w architekturze mikroserwisowej (Spring Boot 3.5 + Keycloak 26 + PostgreSQL + EL
 - Architektura: [`docs/architecture.md`](docs/architecture.md)
 - Kolekcja Postman z requestami API: [`docs/postman/`](docs/postman/README.md)
 
-> **Status:** Etap 4 (Auth Service). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
+> **Status:** Etap 5 (Audit Service). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
 > zarządzanie użytkownikami w Keycloak i lokalnym profilu (`/api/users`), odczyt i przypisywanie ról
-> (`/api/roles`, `/api/users/{keycloakId}/roles`). Audyt (Etap 5) i widoki UI do zarządzania (Etap 6) —
-> w kolejnych etapach.
+> (`/api/roles`, `/api/users/{keycloakId}/roles`), audyt operacji administracyjnych (`/api/audit-events`).
+> Widoki UI do zarządzania — Etap 6.
 
 ## 1. Wymagania lokalne
 
@@ -182,8 +182,8 @@ Zachowanie:
 - **Status:** źródłem prawdy jest Keycloak — `GET /api/users/{id}` wyrównuje lokalny `enabled` i loguje rozbieżność.
 - **Błędy:** ProblemDetail z polem `code` (np. `USERNAME_OR_EMAIL_TAKEN`, `VALIDATION_FAILED` + `errors`,
   `KEYCLOAK_UNAVAILABLE` → 503).
-- **Znane ograniczenia:** operacje nie są jeszcze audytowane (integracja z audit-service w Etapie 5); reguła
-  ostatniego administratora nie jest chroniona blokadą — dwie równoczesne dezaktywacje dwóch ostatnich adminów
+- **Audyt:** utworzenie, edycja, zmiana statusu i usunięcie konta trafiają do audit-service (sekcja 9).
+- **Znane ograniczenia:** reguła ostatniego administratora nie jest chroniona blokadą — dwie równoczesne dezaktywacje dwóch ostatnich adminów
   mogą obie przejść; konto bez imienia/nazwiska może zostać poproszone przez Keycloak o ich uzupełnienie przy
   logowaniu (domyślny profil użytkownika Keycloak).
 
@@ -223,13 +223,54 @@ Reguły i kody błędów (ProblemDetail z polem `code`):
 | Keycloak niedostępny / odrzuca klienta technicznego | 503 `KEYCLOAK_UNAVAILABLE` / 502 `KEYCLOAK_INTEGRATION_ERROR` |
 
 - Zmiana ról jest widoczna w tokenie użytkownika dopiero po jego odświeżeniu (do 5 min) lub ponownym logowaniu.
-- **Feign i audyt:** auth-service ma gotowego klienta Feign do audit-service (`AUDIT_SERVICE_URL`, timeouty
-  2 s/5 s, bez retry, token Client Credentials z rolą `SERVICE`, propagacja `X-Correlation-Id`). Zdarzenia
-  `ROLE_ASSIGNED`/`ROLE_REMOVED` będą wysyłane od Etapu 5 (gdy audit-service udostępni endpoint).
+- **Audyt:** każda udana zmiana roli trafia do audit-service jako `ROLE_ASSIGNED` / `ROLE_REMOVED` (sekcja 9).
 - **Znane ograniczenia:** role przypisywane wyłącznie bezpośrednio (bez grup); sprawdzenie ostatniego administratora
   nie jest atomowe ze zmianą (dwa równoczesne odebrania `ADMIN` dwóm ostatnim adminom mogą obie przejść).
 
-## 9. Logi i śledzenie żądań (ELK)
+## 9. Audyt (audit-service)
+
+API `http://localhost:8083` (spec §6.3). Operacje administracyjne są zapisywane w tabeli `audit.audit_events`
+(PostgreSQL, JSONB `details`). Wpisy są niezmienne: API nie ma edycji ani usuwania.
+
+| Endpoint | Role | Opis |
+|---|---|---|
+| `GET /api/audit-events` | ADMIN, AUDITOR | lista z filtrami `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie); `page`, `size` ≤ 100, `sort` = `occurredAt` / `eventType` (domyślnie `occurredAt,desc`) |
+| `GET /api/audit-events/{id}` | ADMIN, AUDITOR | szczegóły; brak → 404 `AUDIT_EVENT_NOT_FOUND` |
+| `POST /internal/api/audit-events` | tylko `ROLE_SERVICE` (token Client Credentials) | zapis zdarzenia przez serwisy → 201 `{id}` |
+
+```bash
+curl "http://localhost:8083/api/audit-events?targetUserId=<keycloakId>&sort=occurredAt,asc" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Rejestrowane zdarzenia (`actorUserId`, `targetUserId` = keycloakId; `correlationId` = `X-Correlation-Id`
+żądania, które spowodowało zdarzenie — ten sam identyfikator jest w logach i w Kibanie):
+
+| Zdarzenie | Serwis | Operacja | `details` |
+|---|---|---|---|
+| `USER_CREATED` | user-service | `POST /api/users` | `{username}` |
+| `USER_UPDATED` | user-service | `PUT /api/users/{id}`, `PUT /api/users/me` — tylko gdy coś się zmieniło | `{changedFields: [...]}` (nazwy pól, bez wartości) |
+| `USER_ACTIVATED` / `USER_DEACTIVATED` | user-service | `PATCH /api/users/{id}/status` — tylko przy faktycznej zmianie | `{}` |
+| `USER_DELETED` | user-service | `DELETE /api/users/{id}` | `{username}` |
+| `ROLE_ASSIGNED` / `ROLE_REMOVED` | auth-service | `POST` / `DELETE /api/users/{userId}/roles` | `{roleName}` |
+
+- **Kiedy:** zdarzenie jest wysyłane (OpenFeign, token Client Credentials z rolą `SERVICE`, timeouty connect/read 2 s/2 s, bez
+  retry) dopiero po udanej operacji w Keycloak i bazie. Odrzucone operacje (403, 404, 409) nie są audytowane;
+  profil tworzony just-in-time przy `GET /api/users/me` też nie.
+- **Gdy audit-service nie działa (best effort):** operacja kończy się normalnie (2xx), a brak wpisu jest
+  logowany jako ERROR `Audit event NOT recorded (operation already applied)` z typem zdarzenia, aktorem, celem
+  i `correlationId` — do ręcznego uzupełnienia. Świadoma decyzja MVP (spec §7): dostępność operacji
+  administracyjnych ważniejsza niż kompletność audytu; trwały outbox poza zakresem.
+- **Dane:** w `details` nie ma haseł (także tymczasowych), tokenów ani sekretów; e-maile i wartości pól nie są
+  zapisywane. audit-service odrzuca nieznane typy zdarzeń i `details` większe niż 4 KB / 20 kluczy (400).
+- **Znane ograniczenia:** niezmienność zapewnia API (brak edycji/usuwania), nie uprawnienia w bazie — użytkownik DB
+  `audit_service` jest właścicielem schematu (potrzebne do migracji Liquibase). Wywołania serwis–serwis używają tego samego tokena
+  klienta `mini-iam-admin` co Keycloak Admin API (role `realm-management`), więc audit-service otrzymuje token
+  szerszy, niż potrzebuje (wystarczyłaby rola `SERVICE`); osobny klient techniczny tylko z `SERVICE` to możliwe
+  utwardzenie. Audyt działa w wątku żądania — gdy audit-service nie odpowiada, udana operacja kończy się po
+  timeoucie (do ok. 2 s).
+
+## 10. Logi i śledzenie żądań (ELK)
 
 Każdy serwis przyjmuje lub generuje nagłówek `X-Correlation-Id`, zwraca go w odpowiedzi i dodaje
 do każdego wpisu logu jako `correlationId` (spec §16).
@@ -246,7 +287,7 @@ curl -i -H "X-Correlation-Id: demo-123" http://localhost:8081/actuator/health
 W Kibanie: **Discover** → data view *Mini IAM logs* → zapytanie `correlationId : "demo-123"`.
 Żądania do `/actuator/**` nie generują logu zakończenia (healthchecki), ale też dostają `X-Correlation-Id`.
 
-## 10. Testy
+## 11. Testy
 
 ```bash
 ./mvnw test      # testy jednostkowe i MockMvc (reguły 401/403, CORS, converter ról)
@@ -259,11 +300,13 @@ w Testcontainers: migracje Liquibase na czystej bazie, walidacja prawdziwych tok
 (poprawny token, zły issuer, brak audience, zmieniony podpis) oraz pełny cykl życia użytkownika w user-service
 (tworzenie w Keycloak, duplikaty, edycja, status, ostatni admin, usuwanie, profil just-in-time) i zarządzanie
 rolami w auth-service (przypisanie/odebranie w Keycloak, reguły biznesowe, prawdziwe tokeny użytkowników:
-po nadaniu `MANAGER` token go zawiera, a `MANAGER`/`USER` dostają 403 przy zmianie ról). Klient Feign do
-audit-service jest testowany na lokalnym serwerze HTTP (nagłówki, brak retry, timeout, mapowanie błędów).
+po nadaniu `MANAGER` token go zawiera, a `MANAGER`/`USER` dostają 403 przy zmianie ról). audit-service jest
+testowany na prawdziwym PostgreSQL (zapis z `correlation_id`, JSONB, filtry, paginacja). Klient Feign do
+audit-service (user-service i auth-service) jest testowany na lokalnym serwerze HTTP (nagłówki, brak retry,
+timeout, błąd nie przerywa operacji).
 Nie wymagają uruchomionego Compose ani ELK.
 
-## 11. Typowe problemy
+## 12. Typowe problemy
 
 | Problem | Rozwiązanie |
 |---|---|

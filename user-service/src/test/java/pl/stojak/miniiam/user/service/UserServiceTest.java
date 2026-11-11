@@ -20,6 +20,9 @@ import pl.stojak.miniiam.user.exception.InvalidRequestException;
 import pl.stojak.miniiam.user.exception.OperationForbiddenException;
 import pl.stojak.miniiam.user.exception.UserNotFoundException;
 import pl.stojak.miniiam.user.exception.UserSyncException;
+import pl.stojak.miniiam.user.integration.audit.AuditEventPublisher;
+import pl.stojak.miniiam.user.integration.audit.AuditEventRequest;
+import pl.stojak.miniiam.user.integration.audit.AuditEventType;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakAdminClient;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakUnavailableException;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakUser;
@@ -27,6 +30,7 @@ import pl.stojak.miniiam.user.integration.keycloak.NewKeycloakUser;
 import pl.stojak.miniiam.user.repository.UserProfileRepository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -38,7 +42,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,11 +59,14 @@ class UserServiceTest {
     @Mock
     private KeycloakAdminClient keycloak;
 
+    @Mock
+    private AuditEventPublisher auditEventPublisher;
+
     private UserService service;
 
     @BeforeEach
     void setUp() {
-        service = new UserService(repository, keycloak);
+        service = new UserService(repository, keycloak, auditEventPublisher);
     }
 
     private static UserProfile profile(String keycloakId, boolean enabled) {
@@ -359,6 +368,157 @@ class UserServiceTest {
 
         verify(keycloak).updateProfile("kc-user", "me@example.com", "Me", "Myself", true);
         assertThat(updated.email()).isEqualTo("me@example.com");
+    }
+
+    // ---------------------------------------------------------------- audit (best effort, spec §6.3, §7)
+
+    private AuditEventRequest publishedEvent() {
+        ArgumentCaptor<AuditEventRequest> event = ArgumentCaptor.forClass(AuditEventRequest.class);
+        verify(auditEventPublisher).publish(event.capture());
+        return event.getValue();
+    }
+
+    @Test
+    void createIsAuditedWithUsernameOnly() {
+        when(keycloak.createUser(any())).thenReturn("kc-new");
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(new CreateUserRequest("John.Doe", "john@example.com", "John", "Doe", "Secret123!"), MANAGER);
+
+        AuditEventRequest event = publishedEvent();
+        assertThat(event.eventType()).isEqualTo(AuditEventType.USER_CREATED);
+        assertThat(event.actorUserId()).isEqualTo("kc-manager");
+        assertThat(event.targetUserId()).isEqualTo("kc-new");
+        assertThat(event.occurredAt()).isNotNull();
+        // Never the temporary password, nor the e-mail.
+        assertThat(event.details()).isEqualTo(Map.of("username", "john.doe"));
+    }
+
+    @Test
+    void failedAuditDoesNotFailTheOperation() {
+        when(keycloak.createUser(any())).thenReturn("kc-new");
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(auditEventPublisher.publish(any())).thenReturn(false);
+
+        UserResponse created = service.create(
+                new CreateUserRequest("john", "john@example.com", null, null, "Secret123!"), ADMIN);
+
+        assertThat(created.keycloakId()).isEqualTo("kc-new");
+    }
+
+    @Test
+    void failedOperationIsNotAudited() {
+        when(keycloak.createUser(any())).thenReturn("kc-new");
+        when(repository.save(any(UserProfile.class))).thenThrow(new DataIntegrityViolationException("db down"));
+
+        assertThatThrownBy(() -> service.create(
+                new CreateUserRequest("john", "john@example.com", null, null, "Secret123!"), ADMIN))
+                .isInstanceOf(UserSyncException.class);
+
+        verifyNoInteractions(auditEventPublisher);
+    }
+
+    @Test
+    void updateIsAuditedWithNamesOfChangedFields() {
+        UserProfile existing = profile("kc-1", true);
+        when(repository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.update(existing.getId(), new UpdateProfileRequest("John@Example.com", "Johnny", null), ADMIN);
+
+        AuditEventRequest event = publishedEvent();
+        assertThat(event.eventType()).isEqualTo(AuditEventType.USER_UPDATED);
+        assertThat(event.targetUserId()).isEqualTo("kc-1");
+        // The e-mail differs only in case (normalized) - not a change.
+        assertThat(event.details()).isEqualTo(Map.of("changedFields", List.of("firstName", "lastName")));
+    }
+
+    @Test
+    void ownProfileUpdateIsAuditedWithActorAsTarget() {
+        UserProfile mine = profile("kc-user", true);
+        when(repository.findByKeycloakId("kc-user")).thenReturn(Optional.of(mine));
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.updateOwnProfile(new UpdateProfileRequest("me@example.com", "John", "Doe"),
+                new Actor("kc-user", Set.of("USER")));
+
+        AuditEventRequest event = publishedEvent();
+        assertThat(event.actorUserId()).isEqualTo("kc-user");
+        assertThat(event.targetUserId()).isEqualTo("kc-user");
+        assertThat(event.details()).isEqualTo(Map.of("changedFields", List.of("email")));
+    }
+
+    @Test
+    void updateWithoutChangesIsNotAudited() {
+        UserProfile existing = profile("kc-1", true);
+        when(repository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.update(existing.getId(), new UpdateProfileRequest("john@example.com", "John", "Doe"), ADMIN);
+
+        verifyNoInteractions(auditEventPublisher);
+    }
+
+    @Test
+    void deactivationAndActivationAreAudited() {
+        UserProfile user = profile("kc-user", true);
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(keycloak.getRealmRoleMembers("ADMIN")).thenReturn(List.of(account("kc-admin", true)));
+        when(keycloak.findUser("kc-user"))
+                .thenReturn(Optional.of(account("kc-user", true)))
+                .thenReturn(Optional.of(account("kc-user", false)));
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.updateStatus(user.getId(), false, ADMIN);
+        service.updateStatus(user.getId(), true, ADMIN);
+
+        ArgumentCaptor<AuditEventRequest> events = ArgumentCaptor.forClass(AuditEventRequest.class);
+        verify(auditEventPublisher, times(2)).publish(events.capture());
+        assertThat(events.getAllValues()).extracting(AuditEventRequest::eventType)
+                .containsExactly(AuditEventType.USER_DEACTIVATED, AuditEventType.USER_ACTIVATED);
+        assertThat(events.getAllValues()).allSatisfy(event -> {
+            assertThat(event.targetUserId()).isEqualTo("kc-user");
+            assertThat(event.details()).isEmpty();
+        });
+    }
+
+    @Test
+    void settingTheCurrentStatusIsNotAudited() {
+        UserProfile user = profile("kc-user", true);
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(keycloak.findUser("kc-user")).thenReturn(Optional.of(account("kc-user", true)));
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.updateStatus(user.getId(), true, ADMIN);
+
+        verifyNoInteractions(auditEventPublisher);
+    }
+
+    @Test
+    void deleteIsAuditedWithUsername() {
+        UserProfile user = profile("kc-user", true);
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(keycloak.getRealmRoleMembers("ADMIN")).thenReturn(List.of(account("kc-admin", true)));
+        when(keycloak.deleteUser("kc-user")).thenReturn(true);
+
+        service.delete(user.getId(), ADMIN);
+
+        AuditEventRequest event = publishedEvent();
+        assertThat(event.eventType()).isEqualTo(AuditEventType.USER_DELETED);
+        assertThat(event.actorUserId()).isEqualTo("kc-admin");
+        assertThat(event.targetUserId()).isEqualTo("kc-user");
+        assertThat(event.details()).isEqualTo(Map.of("username", "john.doe"));
+    }
+
+    @Test
+    void justInTimeProvisioningIsNotAudited() {
+        when(repository.findByKeycloakId("kc-new")).thenReturn(Optional.empty());
+        when(keycloak.findUser("kc-new")).thenReturn(Optional.of(account("kc-new", true)));
+        when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.getOwnProfile(new Actor("kc-new", Set.of("USER")));
+
+        verifyNoInteractions(auditEventPublisher);
     }
 
     // ---------------------------------------------------------------- list

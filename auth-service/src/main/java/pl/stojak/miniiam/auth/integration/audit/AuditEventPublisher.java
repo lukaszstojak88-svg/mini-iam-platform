@@ -12,10 +12,11 @@ import org.springframework.web.client.ResourceAccessException;
 import java.io.IOException;
 
 /**
- * Records audit events in audit-service (spec §6.3, §7). Synchronous: when audit-service is unavailable the
- * caller gets {@link AuditUnavailableException} and the business operation fails visibly (documented MVP
- * behaviour, spec §7). Every failure is translated into {@link AuditUnavailableException} or
- * {@link AuditIntegrationException}; event details are never logged.
+ * Records audit events in audit-service (spec §6.3, §7) - synchronously, after the business operation succeeded.
+ * <p>
+ * Best effort (project decision, spec §7): a failure to record the event never fails the operation that has
+ * already been applied. It is logged at ERROR level with the event type, actor, target and correlation id (MDC)
+ * so the missing entry can be reconciled manually. Event details are never logged (they may contain personal data).
  */
 @Component
 public class AuditEventPublisher {
@@ -28,31 +29,45 @@ public class AuditEventPublisher {
         this.auditClient = auditClient;
     }
 
-    public void publish(AuditEventRequest event) {
+    /**
+     * @return {@code true} when audit-service stored the event, {@code false} when recording failed (already logged)
+     */
+    public boolean publish(AuditEventRequest event) {
         long start = System.nanoTime();
         try {
-            auditClient.record(event);
+            send(event);
             log.info("Audit event {} recorded in {} ms", event.eventType(), elapsedMs(start));
+            return true;
         } catch (AuditUnavailableException | AuditIntegrationException e) {
-            log.warn("Recording audit event {} failed after {} ms: {}", event.eventType(), elapsedMs(start), e.getMessage());
+            log.error("Audit event NOT recorded (operation already applied): type={}, actor={}, target={}, "
+                            + "after {} ms: {}", event.eventType(), event.actorUserId(), event.targetUserId(),
+                    elapsedMs(start), e.getMessage());
+        } catch (RuntimeException e) {
+            log.error("Audit event NOT recorded (operation already applied): type={}, actor={}, target={}, "
+                            + "unexpected {}", event.eventType(), event.actorUserId(), event.targetUserId(),
+                    e.getClass().getSimpleName());
+        }
+        return false;
+    }
+
+    /** Calls audit-service and translates every failure into {@link AuditUnavailableException} or {@link AuditIntegrationException}. */
+    private void send(AuditEventRequest event) {
+        try {
+            auditClient.record(event);
+        } catch (AuditUnavailableException | AuditIntegrationException e) {
             throw e;
         } catch (RetryableException e) {
             // I/O problem: connection refused, connect/read timeout.
-            log.warn("Recording audit event {} failed after {} ms: audit-service unreachable ({})",
-                    event.eventType(), elapsedMs(start), rootCauseName(e));
-            throw new AuditUnavailableException("audit-service is unreachable", e);
+            throw new AuditUnavailableException("audit-service unreachable (" + rootCauseName(e) + ")", e);
         } catch (OAuth2AuthorizationException e) {
             // I/O or 5xx from the token endpoint = Keycloak unavailable; anything else = credentials rejected.
             boolean ioProblem = hasCause(e, IOException.class) || hasCause(e, ResourceAccessException.class)
                     || hasCause(e, HttpServerErrorException.class);
-            log.warn("Recording audit event {} failed: obtaining service token failed ({}), error code {}",
-                    event.eventType(), ioProblem ? "I/O" : "authorization", e.getError().getErrorCode());
-            throw ioProblem ? new AuditUnavailableException("Service token unavailable", e)
-                    : new AuditIntegrationException("Service token rejected", e);
+            String message = "obtaining service token failed (" + (ioProblem ? "I/O" : "authorization")
+                    + "), error code " + e.getError().getErrorCode();
+            throw ioProblem ? new AuditUnavailableException(message, e) : new AuditIntegrationException(message, e);
         } catch (FeignException e) {
-            log.warn("Recording audit event {} failed after {} ms: {}", event.eventType(), elapsedMs(start),
-                    e.getClass().getSimpleName());
-            throw new AuditUnavailableException("audit-service call failed", e);
+            throw new AuditUnavailableException("audit-service call failed (" + e.getClass().getSimpleName() + ")", e);
         }
     }
 

@@ -19,7 +19,6 @@ import pl.stojak.miniiam.auth.dto.response.UserRolesResponse;
 import pl.stojak.miniiam.auth.exception.DomainException;
 import pl.stojak.miniiam.auth.exception.ErrorCode;
 import pl.stojak.miniiam.auth.exception.GlobalExceptionHandler;
-import pl.stojak.miniiam.auth.integration.audit.AuditUnavailableException;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakUnavailableException;
 import pl.stojak.miniiam.auth.security.SecurityConfig;
 import pl.stojak.miniiam.auth.service.RoleService;
@@ -212,15 +211,10 @@ class RoleControllersTest {
     void dependencyFailuresDoNotLeakDetails() throws Exception {
         when(roleService.getUserRoles(TARGET))
                 .thenThrow(new KeycloakUnavailableException("getEffectiveRealmRoles", new RuntimeException("10.0.0.5")));
-        when(roleService.listRoles()).thenThrow(new AuditUnavailableException("audit-service:8083 down", null));
 
         mockMvc.perform(get(ROLES_URL).with(as("ADMIN")))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("KEYCLOAK_UNAVAILABLE"))
                 .andExpect(content().string(not(containsString("10.0.0.5"))));
-        mockMvc.perform(get("/api/roles").with(as("ADMIN")))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("AUDIT_UNAVAILABLE"))
-                .andExpect(content().string(not(containsString("8083"))));
     }
 }

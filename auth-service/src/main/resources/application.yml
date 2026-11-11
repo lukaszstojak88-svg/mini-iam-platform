@@ -39,7 +39,8 @@ spring:
           audit-service:
             url: ${AUDIT_SERVICE_URL:http://localhost:8083}
             connect-timeout: 2000
-            read-timeout: 5000
+            # Short read timeout: auditing is best effort and runs in the request thread after the operation.
+            read-timeout: 2000
 
 app:
   security:

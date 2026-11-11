@@ -127,6 +127,19 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
 - **Audit Logs** — tabela tylko do odczytu: czas (lokalna strefa przeglądarki, dane w UTC), typ zdarzenia,
   aktor, użytkownik docelowy, szczegóły (rozwijane / dialog z `details` i `correlationId`). Filtry: typ zdarzenia,
   aktor, użytkownik docelowy, zakres dat; paginacja serwerowa. Brak edycji i usuwania.
+  Kontrakt audit-service (Etap 5):
+  - `GET /api/audit-events?eventType&actorUserId&targetUserId&from&to&page&size&sort` (ADMIN, AUDITOR) →
+    `{content, page, size, totalElements, totalPages}`; element: `{id, eventType, actorUserId, targetUserId,
+    details, occurredAt, correlationId}`; `from` włącznie, `to` wyłącznie (ISO-8601 UTC); `sort` tylko
+    `occurredAt` / `eventType` (inne → 400), domyślnie `occurredAt,desc`; `size` ≤ 100;
+  - `GET /api/audit-events/{id}` → jeden wpis, brak → 404 `AUDIT_EVENT_NOT_FOUND`;
+  - typy: `USER_CREATED`, `USER_UPDATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_DELETED`, `ROLE_ASSIGNED`,
+    `ROLE_REMOVED` (nieznany typ w filtrze → 400); `details`: `{username}`, `{changedFields: [...]}`, `{roleName}`
+    lub `{}`;
+  - aktor i cel to `keycloakId` — UI może je zamienić na nazwy z listy użytkowników; usuniętego konta już tam nie
+    ma, więc dla `USER_DELETED` pokazujemy `details.username`.
+- Operacje zapisu w user-service i auth-service nie zwracają błędów audytu: przy niedostępnym audit-service
+  operacja kończy się sukcesem (audyt best effort), więc UI nie obsługuje kodów `AUDIT_*`.
 - **Access Denied** — komunikat i powrót do Dashboardu.
 
 ## 6. Komunikacja z API i obsługa błędów
@@ -139,8 +152,8 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
   `VALIDATION_FAILED` + `errors[{field, message}]`, `INVALID_REQUEST`, `INVALID_USER_DATA`, `USER_NOT_FOUND`,
   `USERNAME_OR_EMAIL_TAKEN`, `LAST_ADMIN`, `ADMIN_ACCOUNT_PROTECTED`, `USER_SYNC_FAILED`, `KEYCLOAK_UNAVAILABLE`,
   `KEYCLOAK_INTEGRATION_ERROR`, `INTERNAL_ERROR`; dodatkowo auth-service: `ROLE_NOT_ASSIGNABLE`, `ROLE_NOT_FOUND`,
-  `ROLE_NOT_ASSIGNED`, `RESOURCE_NOT_FOUND`, `ROLE_ALREADY_ASSIGNED`, `SELF_ROLE_CHANGE`, `SERVICE_ACCOUNT_PROTECTED`, `AUDIT_UNAVAILABLE`,
-  `AUDIT_INTEGRATION_ERROR`) — komunikaty UI mapujemy po `code`, a gdy go brak, po statusie:
+  `ROLE_NOT_ASSIGNED`, `RESOURCE_NOT_FOUND`, `ROLE_ALREADY_ASSIGNED`, `SELF_ROLE_CHANGE`, `SERVICE_ACCOUNT_PROTECTED`;
+  audit-service: `VALIDATION_FAILED`, `INVALID_REQUEST`, `AUDIT_EVENT_NOT_FOUND`) — komunikaty UI mapujemy po `code`, a gdy go brak, po statusie:
   - 401 → ponowne logowanie (`httpErrorInterceptor`), 403 → `/access-denied`;
   - 400 → błędy walidacji przy polach formularza; 404 → „Nie znaleziono”; 409 → komunikat konfliktu;
   - 502/503/0 → „Usługa chwilowo niedostępna”;

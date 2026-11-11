@@ -14,6 +14,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.util.LinkedMultiValueMap;
@@ -21,6 +22,9 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventPublisher;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventRequest;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventType;
 
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +33,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Role management end-to-end against a real Keycloak (same realm import as docker compose): every Admin API call
  * is real. Admin callers are simulated with mock JWTs (the realm admin has no password-grant client); regular
  * users log in for real through a test client, so "authorization follows the token" is verified with real tokens.
+ * audit-service is replaced by a mock publisher (its Feign client is covered by AuditEventPublisherTest).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -79,6 +87,9 @@ class RoleManagementKeycloakIT {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private AuditEventPublisher auditEventPublisher;
 
     // ---------------------------------------------------------------- scenarios
 
@@ -127,6 +138,17 @@ class RoleManagementKeycloakIT {
         mockMvc.perform(delete(rolesUrl(userId) + "/MANAGER").with(admin()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ROLE_NOT_ASSIGNED"));
+
+        // Only the two successful changes are audited (not the duplicate or the 404).
+        verify(auditEventPublisher, times(1)).publish(argThat(event ->
+                isRoleEvent(event, AuditEventType.ROLE_ASSIGNED, userId)));
+        verify(auditEventPublisher, times(1)).publish(argThat(event ->
+                isRoleEvent(event, AuditEventType.ROLE_REMOVED, userId)));
+    }
+
+    private static boolean isRoleEvent(AuditEventRequest event, AuditEventType type, String userId) {
+        return event.eventType() == type && userId.equals(event.targetUserId())
+                && realmAdminId.equals(event.actorUserId()) && Map.of("roleName", "MANAGER").equals(event.details());
     }
 
     @Test

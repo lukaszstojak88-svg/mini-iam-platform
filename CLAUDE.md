@@ -23,8 +23,8 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-Etapy 1–4 zrealizowane i zaakceptowane.
-Następny: **Etap 5 — Audit Service** (nie zaczynać bez decyzji użytkownika).
+Etapy 1–5 zrealizowane i zaakceptowane.
+Następny: **Etap 6 — Angular UI** (nie zaczynać bez decyzji użytkownika).
 
 ## Komendy
 
@@ -73,7 +73,6 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 - Tworzenie konta z `temporaryPassword` (tylko do Keycloak, `temporary=true`); profil just-in-time przy
   `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN.
 - Błędy user-service: ProblemDetail + `code` (`ErrorCode`); lista: sort tylko po whitelist, `size` ≤ 100.
-- Audyt operacji user-service zostanie dodany w Etapie 5 (integracja Feign z audit-service).
 - auth-service: role tylko w Keycloak (bez bazy i cache), własny `KeycloakAdminClient` (wzorzec z user-service,
   ten sam klient `mini-iam-admin`; realm bez zmian). `GET /api/roles` — ADMIN, MANAGER (`{name, description,
   assignable}`); `GET /api/users/{userId}/roles` — ADMIN lub właściciel; `POST` (200 + aktualne role) i `DELETE`
@@ -81,10 +80,22 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   `ROLE_NOT_ASSIGNABLE`; własne role → 403 `SELF_ROLE_CHANGE`; konta serwisowe → 403 `SERVICE_ACCOUNT_PROTECTED`;
   duplikat → 409; odebranie nieprzypisanej (bezpośrednio) → 404 `ROLE_NOT_ASSIGNED`; ostatni aktywny ADMIN → 409
   `LAST_ADMIN`. Role przypisywane wyłącznie bezpośrednio (bez grup).
-- Feign (auth-service, Etap 4): `AuditClient` + `AuditEventPublisher` (token Client Credentials przez wspólny
-  `OAuth2AuthorizedClientManager`, `CorrelationIdRequestInterceptor`, timeouty 2 s/5 s, `Retryer.NEVER_RETRY`,
-  `AuditErrorDecoder` → 503 `AUDIT_UNAVAILABLE` / 502 `AUDIT_INTEGRATION_ERROR`). `@EnableFeignClients` w osobnej
-  konfiguracji (nie w klasie aplikacji). Wywołania audytu ról (`ROLE_ASSIGNED`/`ROLE_REMOVED`) podpinane w Etapie 5.
+- Feign do audit-service (user-service i auth-service, kod skopiowany): `ServiceTokenConfig` (wspólny
+  `OAuth2AuthorizedClientManager` dla Admin API i Feign) + `ServiceAccessTokenProvider`, `AuditClient`,
+  `AuditEventPublisher`, `CorrelationIdRequestInterceptor`, timeouty 2 s/2 s, `Retryer.NEVER_RETRY`,
+  `AuditErrorDecoder` (klasyfikacja do logu, unieważnienie tokena przy 401/403). `@EnableFeignClients` w osobnej
+  konfiguracji (nie w klasie aplikacji). Ten sam token `mini-iam-admin` (także role `realm-management`) trafia do
+  audit-service — znane ograniczenie MVP (osobny klient tylko z `SERVICE` = możliwe utwardzenie).
+- Audyt **best effort** (decyzja użytkownika, spec §7): zdarzenie wysyłane po udanej operacji; błąd audit-service
+  nie przerywa operacji (2xx) — tylko ERROR `Audit event NOT recorded` (typ, aktor, cel, correlationId). Brak kodów
+  `AUDIT_*` w API. Zdarzenia: `USER_CREATED`/`USER_DELETED` `{username}`, `USER_UPDATED` `{changedFields}` (tylko
+  nazwy pól, tylko gdy coś się zmieniło; także `PUT /me`), `USER_ACTIVATED`/`USER_DEACTIVATED` `{}` (tylko przy
+  faktycznej zmianie), `ROLE_ASSIGNED`/`ROLE_REMOVED` `{roleName}`. Bez audytu: odrzucone operacje, profil JIT.
+- audit-service: tabela `audit.audit_events` (spec §8.2), encja `@Immutable`, brak PUT/DELETE; `POST
+  /internal/api/audit-events` (`ROLE_SERVICE`, 201 `{id}`, `correlation_id` z nagłówka, nie z body; nieznany typ,
+  `details` > 4 KB lub > 20 kluczy → 400); `GET /api/audit-events` (ADMIN, AUDITOR; filtry `eventType`,
+  `actorUserId`, `targetUserId`, `from` włącznie, `to` wyłącznie; sort `occurredAt`/`eventType`, domyślnie
+  `occurredAt,desc`; `size` ≤ 100) i `GET /api/audit-events/{id}` (404 `AUDIT_EVENT_NOT_FOUND`).
 - Kolekcja Postman `docs/postman/` (kolekcja v2.1 + środowisko lokalne bez sekretów, instrukcja w `README.md`):
   przy każdym nowym lub zmienionym endpoincie aktualizuj odpowiedni request (opis ról, test oczekiwanego statusu).
 - Komentarze w kodzie i plikach konfiguracyjnych po angielsku; dokumentacja Markdown po polsku.

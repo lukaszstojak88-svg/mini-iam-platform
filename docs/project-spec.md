@@ -620,6 +620,12 @@ przy niedostępności `audit-service`. To zachowanie musi być jawne i
 opisane. Dopuszczalne jest późniejsze rozszerzenie o trwały mechanizm
 outbox/event broker, ale nie jest ono częścią MVP.
 
+**Decyzja (Etap 5):** audyt jest zapisywany synchronicznie, po udanej
+operacji, w trybie *best effort*. Niedostępność lub błąd `audit-service`
+nie przerywa operacji, która już się wykonała (odpowiedź 2xx); brak
+wpisu jest logowany jako ERROR z typem zdarzenia, aktorem, celem i
+correlation ID, aby można go było uzupełnić ręcznie.
+
 ------------------------------------------------------------------------
 
 ## 8. Model danych

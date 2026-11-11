@@ -61,7 +61,8 @@ Pakiet bazowy `pl.stojak.miniiam.<user|auth|audit>`:
 - Każdy klient Feign: connect/read timeout, mapowanie błędów na kontrolowane wyjątki, retry tylko dla
   idempotentnych operacji i ze skończoną liczbą prób.
 - Nie wołaj innych serwisów wewnątrz długiej transakcji DB.
-- Niedostępność audit-service w MVP może zablokować operację - zachowanie ma być jawne (błąd 503 + log).
+- Audyt jest best effort: `AuditEventPublisher.publish(...)` po udanej operacji (poza transakcją); błąd
+  audit-service nie przerywa operacji - publisher loguje ERROR i zwraca `false`. Nie audytuj operacji odrzuconych.
 - Częściowa awaria Keycloak <-> lokalna baza (spec §6.1): kompensacja albo jednoznaczny błąd + log diagnostyczny.
 
 ## 6. Logowanie (spec §16.3)

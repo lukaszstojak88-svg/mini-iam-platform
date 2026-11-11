@@ -8,12 +8,17 @@ import pl.stojak.miniiam.auth.dto.response.RoleResponse;
 import pl.stojak.miniiam.auth.dto.response.UserRolesResponse;
 import pl.stojak.miniiam.auth.exception.DomainException;
 import pl.stojak.miniiam.auth.exception.ErrorCode;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventPublisher;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventRequest;
+import pl.stojak.miniiam.auth.integration.audit.AuditEventType;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakAdminClient;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakRole;
 import pl.stojak.miniiam.auth.integration.keycloak.KeycloakUser;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -24,6 +29,9 @@ import java.util.Optional;
  * nobody changes their own roles; service accounts are protected; a role cannot be assigned twice; the last
  * active administrator keeps ADMIN. Roles are assigned directly (no groups). The checks are not atomic with the
  * change - two concurrent removals of ADMIN from the last two administrators are a documented MVP limitation.
+ * <p>
+ * Every successful change is recorded in audit-service ({@code ROLE_ASSIGNED} / {@code ROLE_REMOVED}) right after
+ * Keycloak accepted it; a failed audit call is logged and does not fail the operation (best effort, spec §7).
  */
 @Service
 public class RoleService {
@@ -33,9 +41,11 @@ public class RoleService {
     private static final Logger log = LoggerFactory.getLogger(RoleService.class);
 
     private final KeycloakAdminClient keycloak;
+    private final AuditEventPublisher auditEventPublisher;
 
-    public RoleService(KeycloakAdminClient keycloak) {
+    public RoleService(KeycloakAdminClient keycloak, AuditEventPublisher auditEventPublisher) {
         this.keycloak = keycloak;
+        this.auditEventPublisher = auditEventPublisher;
     }
 
     /** Application roles defined in the realm, in the order of {@link AppRole}. */
@@ -71,6 +81,7 @@ public class RoleService {
 
         keycloak.addRealmRole(id, realmRole);
         log.info("Role {} assigned to {} by {}", role, id, actorId);
+        audit(AuditEventType.ROLE_ASSIGNED, actorId, id, role);
         return new UserRolesResponse(id, applicationRoles(keycloak.getEffectiveRealmRoles(id)));
     }
 
@@ -92,9 +103,15 @@ public class RoleService {
 
         keycloak.removeRealmRole(id, mapping);
         log.info("Role {} removed from {} by {}", role, id, actorId);
+        audit(AuditEventType.ROLE_REMOVED, actorId, id, role);
     }
 
     // ---------------------------------------------------------------- rules and helpers
+
+    private void audit(AuditEventType type, String actorId, String targetId, AppRole role) {
+        auditEventPublisher.publish(new AuditEventRequest(type, actorId, targetId,
+                Map.of("roleName", role.name()), Instant.now()));
+    }
 
     private static AppRole assignableRole(String roleName) {
         return AppRole.fromName(roleName)

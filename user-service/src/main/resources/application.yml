@@ -21,7 +21,8 @@ spring:
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/mini-iam/protocol/openid-connect/certs}
           audiences: ${KEYCLOAK_AUDIENCE:mini-iam-api}
       client:
-        # Technical client used for the Keycloak Admin REST API (spec §5.4). The secret has no default on purpose.
+        # Technical client used for the Keycloak Admin REST API (spec §5.4) and service-to-service calls (spec §7).
+        # The secret has no default on purpose.
         registration:
           keycloak-admin:
             provider: keycloak
@@ -31,6 +32,15 @@ spring:
         provider:
           keycloak:
             token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8080/realms/mini-iam/protocol/openid-connect/token}
+  cloud:
+    openfeign:
+      client:
+        config:
+          audit-service:
+            url: ${AUDIT_SERVICE_URL:http://localhost:8083}
+            connect-timeout: 2000
+            # Short read timeout: auditing is best effort and runs in the request thread after the operation.
+            read-timeout: 2000
   data:
     web:
       pageable:

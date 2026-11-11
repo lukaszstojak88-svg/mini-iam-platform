@@ -1,0 +1,70 @@
+# Audit trail of administrative operations (spec §8.2). Rows are append-only: the API has no update or delete.
+# Tokens, passwords, client secrets and other credentials are never stored here.
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-audit-events-table
+      author: mini-iam
+      changes:
+        - createTable:
+            tableName: audit_events
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_audit_events
+              - column:
+                  name: event_type
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_user_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_user_id
+                  type: VARCHAR(64)
+              - column:
+                  name: details
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: occurred_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: correlation_id
+                  type: VARCHAR(100)
+        # Default listing order and date range filter.
+        - createIndex:
+            tableName: audit_events
+            indexName: ix_audit_events_occurred_at
+            columns:
+              - column:
+                  name: occurred_at
+        - createIndex:
+            tableName: audit_events
+            indexName: ix_audit_events_event_type
+            columns:
+              - column:
+                  name: event_type
+        - createIndex:
+            tableName: audit_events
+            indexName: ix_audit_events_actor_user_id
+            columns:
+              - column:
+                  name: actor_user_id
+        - createIndex:
+            tableName: audit_events
+            indexName: ix_audit_events_target_user_id
+            columns:
+              - column:
+                  name: target_user_id
+      rollback:
+        - dropTable:
+            tableName: audit_events

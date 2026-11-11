@@ -11,7 +11,7 @@ import java.util.Map;
  * @param targetUserId keycloakId of the affected user (nullable)
  */
 public record AuditEventRequest(
-        String eventType,
+        AuditEventType eventType,
         String actorUserId,
         String targetUserId,
         Map<String, Object> details,

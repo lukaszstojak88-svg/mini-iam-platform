@@ -15,6 +15,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.util.LinkedMultiValueMap;
@@ -23,12 +24,16 @@ import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import pl.stojak.miniiam.user.integration.audit.AuditEventPublisher;
+import pl.stojak.miniiam.user.integration.audit.AuditEventType;
 import pl.stojak.miniiam.user.repository.UserProfileRepository;
 
 import java.util.Arrays;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,7 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * End-to-end user management against real PostgreSQL and Keycloak (same realm import as docker compose).
- * The caller is simulated with a mock JWT; all Keycloak Admin API calls are real.
+ * The caller is simulated with a mock JWT; all Keycloak Admin API calls are real. audit-service is replaced by a
+ * mock publisher (its Feign client is covered by AuditEventPublisherTest).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -77,6 +83,9 @@ class UserServiceKeycloakIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockitoBean
+    private AuditEventPublisher auditEventPublisher;
 
     private final RestClient restClient = RestClient.create();
 
@@ -208,6 +217,11 @@ class UserServiceKeycloakIT {
                 .exchange((request, response) -> response.getStatusCode());
         assertThat(status.value()).isEqualTo(404);
         assertThat(repository.findById(UUID.fromString(created.get("id").asText()))).isEmpty();
+
+        verify(auditEventPublisher).publish(argThat(event -> event.eventType() == AuditEventType.USER_CREATED
+                && keycloakId.equals(event.targetUserId()) && "kc-it-admin".equals(event.actorUserId())));
+        verify(auditEventPublisher).publish(argThat(event -> event.eventType() == AuditEventType.USER_DELETED
+                && keycloakId.equals(event.targetUserId()) && "it.delete".equals(event.details().get("username"))));
     }
 
     // ---------------------------------------------------------------- Keycloak helpers (master admin)

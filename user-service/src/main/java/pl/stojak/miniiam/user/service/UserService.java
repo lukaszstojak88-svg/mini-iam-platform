@@ -19,6 +19,9 @@ import pl.stojak.miniiam.user.exception.InvalidRequestException;
 import pl.stojak.miniiam.user.exception.OperationForbiddenException;
 import pl.stojak.miniiam.user.exception.UserNotFoundException;
 import pl.stojak.miniiam.user.exception.UserSyncException;
+import pl.stojak.miniiam.user.integration.audit.AuditEventPublisher;
+import pl.stojak.miniiam.user.integration.audit.AuditEventRequest;
+import pl.stojak.miniiam.user.integration.audit.AuditEventType;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakAdminClient;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakIntegrationException;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakNotFoundException;
@@ -29,7 +32,11 @@ import pl.stojak.miniiam.user.mapper.UserMapper;
 import pl.stojak.miniiam.user.repository.UserProfileRepository;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -42,6 +49,10 @@ import java.util.UUID;
  * (repository calls are individually transactional). When the local write fails, the Keycloak change is
  * compensated (best effort); if compensation fails too, the inconsistency is logged with the identifiers needed
  * for manual reconciliation and a generic error is returned. There is no distributed transaction.
+ * <p>
+ * Every successful change is recorded in audit-service after it was applied in Keycloak and in the database.
+ * Recording is best effort (spec §7): a failure is logged and does not fail the operation. Event details carry
+ * no secrets and as little personal data as possible: the username, or the names (not values) of changed fields.
  */
 @Service
 public class UserService {
@@ -56,10 +67,13 @@ public class UserService {
 
     private final UserProfileRepository repository;
     private final KeycloakAdminClient keycloak;
+    private final AuditEventPublisher auditEventPublisher;
 
-    public UserService(UserProfileRepository repository, KeycloakAdminClient keycloak) {
+    public UserService(UserProfileRepository repository, KeycloakAdminClient keycloak,
+                       AuditEventPublisher auditEventPublisher) {
         this.repository = repository;
         this.keycloak = keycloak;
+        this.auditEventPublisher = auditEventPublisher;
     }
 
     // ---------------------------------------------------------------- queries
@@ -137,6 +151,7 @@ public class UserService {
             throw new UserSyncException("Saving the profile failed; the Keycloak account was rolled back", e);
         }
         log.info("User {} created (keycloakId={}) by {}", profile.getId(), keycloakId, actor.keycloakId());
+        audit(AuditEventType.USER_CREATED, actor, keycloakId, Map.of("username", username));
         return UserMapper.toResponse(profile);
     }
 
@@ -147,14 +162,19 @@ public class UserService {
             throw new OperationForbiddenException(ErrorCode.ADMIN_ACCOUNT_PROTECTED,
                     "Managers cannot modify administrator accounts");
         }
+        List<String> changedFields = changedFields(profile, request);
         UserProfile updated = applyProfileUpdate(profile, request);
         log.info("User {} updated by {}", updated.getId(), actor.keycloakId());
+        auditUpdate(actor, updated, changedFields);
         return UserMapper.toResponse(updated);
     }
 
     public UserResponse updateOwnProfile(UpdateProfileRequest request, Actor actor) {
-        UserProfile updated = applyProfileUpdate(ownProfile(actor), request);
+        UserProfile profile = ownProfile(actor);
+        List<String> changedFields = changedFields(profile, request);
+        UserProfile updated = applyProfileUpdate(profile, request);
         log.info("User {} updated own profile", updated.getId());
+        auditUpdate(actor, updated, changedFields);
         return UserMapper.toResponse(updated);
     }
 
@@ -177,6 +197,11 @@ public class UserService {
             throw new UserSyncException("Saving the status failed", e);
         }
         log.info("User {} {} by {}", saved.getId(), enabled ? "activated" : "deactivated", actor.keycloakId());
+        if (previous != enabled) {
+            // Setting the status it already had is not an activation/deactivation.
+            audit(enabled ? AuditEventType.USER_ACTIVATED : AuditEventType.USER_DEACTIVATED,
+                    actor, saved.getKeycloakId(), Map.of());
+        }
         return UserMapper.toResponse(saved);
     }
 
@@ -196,9 +221,38 @@ public class UserService {
             throw new UserSyncException("Deleting the profile failed", e);
         }
         log.info("User {} (keycloakId={}) deleted by {}", profile.getId(), profile.getKeycloakId(), actor.keycloakId());
+        // The username keeps the entry readable after the account is gone.
+        audit(AuditEventType.USER_DELETED, actor, profile.getKeycloakId(), Map.of("username", profile.getUsername()));
     }
 
     // ---------------------------------------------------------------- rules and helpers
+
+    private void audit(AuditEventType type, Actor actor, String targetKeycloakId, Map<String, Object> details) {
+        auditEventPublisher.publish(new AuditEventRequest(type, actor.keycloakId(), targetKeycloakId, details,
+                Instant.now()));
+    }
+
+    /** A save without any change is not audited. */
+    private void auditUpdate(Actor actor, UserProfile updated, List<String> changedFields) {
+        if (!changedFields.isEmpty()) {
+            audit(AuditEventType.USER_UPDATED, actor, updated.getKeycloakId(), Map.of("changedFields", changedFields));
+        }
+    }
+
+    /** Names of the profile fields the request changes (values are not audited: personal data). */
+    static List<String> changedFields(UserProfile profile, UpdateProfileRequest request) {
+        List<String> changed = new ArrayList<>();
+        if (!request.email().toLowerCase(Locale.ROOT).equals(profile.getEmail())) {
+            changed.add("email");
+        }
+        if (!Objects.equals(request.firstName(), profile.getFirstName())) {
+            changed.add("firstName");
+        }
+        if (!Objects.equals(request.lastName(), profile.getLastName())) {
+            changed.add("lastName");
+        }
+        return List.copyOf(changed);
+    }
 
     private UserProfile applyProfileUpdate(UserProfile profile, UpdateProfileRequest request) {
         String email = request.email().toLowerCase(Locale.ROOT);
