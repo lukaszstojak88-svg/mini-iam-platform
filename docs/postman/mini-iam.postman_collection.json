@@ -107,7 +107,7 @@
                 "token"
               ]
             },
-            "description": "Token klienta technicznego `mini-iam-admin` (rola `SERVICE`, bez ról aplikacyjnych), zapisywany w zmiennej `serviceToken`. Sekret: zmienna środowiska `adminClientSecret` = `MINI_IAM_ADMIN_CLIENT_SECRET` z `.env`.",
+            "description": "Token klienta technicznego `mini-iam-service` (tylko rola `SERVICE`, bez ról aplikacyjnych i bez uprawnień Admin API), zapisywany w zmiennej `serviceToken`. Sekret: zmienna środowiska `serviceClientSecret` = `MINI_IAM_SERVICE_CLIENT_SECRET` z `.env`.",
             "auth": {
               "type": "noauth"
             },
@@ -120,11 +120,11 @@
                 },
                 {
                   "key": "client_id",
-                  "value": "{{adminClientId}}"
+                  "value": "{{serviceClientId}}"
                 },
                 {
                   "key": "client_secret",
-                  "value": "{{adminClientSecret}}"
+                  "value": "{{serviceClientSecret}}"
                 }
               ]
             }
@@ -380,7 +380,7 @@
                 }
               ]
             },
-            "description": "ADMIN, MANAGER. `size` ≤ 100; sortowanie tylko po: username, email, firstName, lastName, enabled, createdAt, updatedAt."
+            "description": "ADMIN, MANAGER. `size` > 100 → 400; sortowanie tylko po: username, email, firstName, lastName, enabled, createdAt, updatedAt."
           },
           "event": [
             {
@@ -823,7 +823,7 @@
     },
     {
       "name": "04 audit-service",
-      "description": "Dziennik audytu (spec §6.3) — tylko odczyt, role `ADMIN` i `AUDITOR`. Zdarzenia zapisują user-service i auth-service przez `/internal/api/audit-events` (token serwisowy z rolą `SERVICE`). `actorUserId`/`targetUserId` = keycloakId. Filtry: `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie) w ISO-8601; sortowanie `occurredAt` / `eventType`, domyślnie `occurredAt,desc`; `size` ≤ 100.",
+      "description": "Dziennik audytu (spec §6.3) — tylko odczyt, role `ADMIN` i `AUDITOR`. Zdarzenia zapisują user-service i auth-service przez `/internal/api/audit-events` (token serwisowy z rolą `SERVICE`). `actorUserId`/`targetUserId` = keycloakId. Filtry: `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie) w ISO-8601; sortowanie `occurredAt` / `eventType`, domyślnie `occurredAt,desc`; `size` > 100 → 400.",
       "item": [
         {
           "id": "323f2b68-81cc-5149-adcc-3a96523a4504",

@@ -48,7 +48,11 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 - Serwisy: `user-service`, `auth-service` (dawniej `access-service`; tylko role/autoryzacja, bez własnej bazy,
   uwierzytelnianie wyłącznie w Keycloak), `audit-service`.
 - Pakiet bazowy / groupId: `pl.stojak.miniiam` (np. `pl.stojak.miniiam.auth`).
-- Serwis–serwis: Client Credentials + techniczna realm role `SERVICE`; `/internal/api/**` wymaga `ROLE_SERVICE`.
+- Serwis–serwis: Client Credentials klienta `mini-iam-service` (tylko realm role `SERVICE`, audience
+  `mini-iam-api`, bez `realm-management`); `/internal/api/**` wymaga `ROLE_SERVICE`. Keycloak Admin API — wyłącznie
+  klient `mini-iam-admin` (`realm-management`, bez audience `mini-iam-api` i bez `SERVICE` w scope mappingu, więc
+  jego token nie działa na API Mini IAM). Oba service accounts mają przypisaną rolę `SERVICE` jako znacznik konta
+  technicznego (Admin API nie zwraca `serviceAccountClientId`, ochrona `SERVICE_ACCOUNT_PROTECTED` opiera się na roli).
   `SERVICE` nie jest rolą aplikacyjną — niewidoczna w `GET /api/roles`, nieprzypisywalna przez API.
 - `USER` nadaje Keycloak przez composite `default-roles-mini-iam`; to rola bazowa, nie można jej odebrać.
 - Role zmienia tylko `ADMIN` (`ADMIN`, `MANAGER`, `AUDITOR`). `MANAGER` nie zmienia żadnych ról.
@@ -72,9 +76,10 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   zapisu lokalnego kompensacja w Keycloak; `enabled` — źródło prawdy Keycloak (wyrównywane przy `GET /{id}`).
 - Tworzenie konta z `temporaryPassword` (tylko do Keycloak, `temporary=true`); profil just-in-time przy
   `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN.
-- Błędy user-service: ProblemDetail + `code` (`ErrorCode`); lista: sort tylko po whitelist, `size` ≤ 100.
+- Błędy user-service: ProblemDetail + `code` (`ErrorCode`); lista: sort tylko po whitelist, `size` > 100 → 400 `INVALID_REQUEST` (bez cichego przycinania;
+  `max-page-size` wyłączone, limit `MAX_PAGE_SIZE` w serwisie — tak samo w audit-service).
 - auth-service: role tylko w Keycloak (bez bazy i cache), własny `KeycloakAdminClient` (wzorzec z user-service,
-  ten sam klient `mini-iam-admin`; realm bez zmian). `GET /api/roles` — ADMIN, MANAGER (`{name, description,
+  ten sam klient `mini-iam-admin` do Admin API). `GET /api/roles` — ADMIN, MANAGER (`{name, description,
   assignable}`); `GET /api/users/{userId}/roles` — ADMIN lub właściciel; `POST` (200 + aktualne role) i `DELETE`
   (204) — tylko ADMIN. Przypisywalne tylko `ADMIN`/`MANAGER`/`AUDITOR` (dokładne nazwy), inne → 400
   `ROLE_NOT_ASSIGNABLE`; własne role → 403 `SELF_ROLE_CHANGE`; konta serwisowe → 403 `SERVICE_ACCOUNT_PROTECTED`;
@@ -84,8 +89,8 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   `OAuth2AuthorizedClientManager` dla Admin API i Feign) + `ServiceAccessTokenProvider`, `AuditClient`,
   `AuditEventPublisher`, `CorrelationIdRequestInterceptor`, timeouty 2 s/2 s, `Retryer.NEVER_RETRY`,
   `AuditErrorDecoder` (klasyfikacja do logu, unieważnienie tokena przy 401/403). `@EnableFeignClients` w osobnej
-  konfiguracji (nie w klasie aplikacji). Ten sam token `mini-iam-admin` (także role `realm-management`) trafia do
-  audit-service — znane ograniczenie MVP (osobny klient tylko z `SERVICE` = możliwe utwardzenie).
+  konfiguracji (nie w klasie aplikacji). Rejestracje OAuth2: `keycloak-admin` (Admin API) i `mini-iam-service`
+  (Feign), stałe `ADMIN_REGISTRATION_ID` / `SERVICE_REGISTRATION_ID` w `ServiceTokenConfig`.
 - Audyt **best effort** (decyzja użytkownika, spec §7): zdarzenie wysyłane po udanej operacji; błąd audit-service
   nie przerywa operacji (2xx) — tylko ERROR `Audit event NOT recorded` (typ, aktor, cel, correlationId). Brak kodów
   `AUDIT_*` w API. Zdarzenia: `USER_CREATED`/`USER_DELETED` `{username}`, `USER_UPDATED` `{changedFields}` (tylko
@@ -95,7 +100,7 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   /internal/api/audit-events` (`ROLE_SERVICE`, 201 `{id}`, `correlation_id` z nagłówka, nie z body; nieznany typ,
   `details` > 4 KB lub > 20 kluczy → 400); `GET /api/audit-events` (ADMIN, AUDITOR; filtry `eventType`,
   `actorUserId`, `targetUserId`, `from` włącznie, `to` wyłącznie; sort `occurredAt`/`eventType`, domyślnie
-  `occurredAt,desc`; `size` ≤ 100) i `GET /api/audit-events/{id}` (404 `AUDIT_EVENT_NOT_FOUND`).
+  `occurredAt,desc`; `size` > 100 → 400) i `GET /api/audit-events/{id}` (404 `AUDIT_EVENT_NOT_FOUND`).
 - Kolekcja Postman `docs/postman/` (kolekcja v2.1 + środowisko lokalne bez sekretów, instrukcja w `README.md`):
   przy każdym nowym lub zmienionym endpoincie aktualizuj odpowiedni request (opis ról, test oczekiwanego statusu).
 - Komentarze w kodzie i plikach konfiguracyjnych po angielsku; dokumentacja Markdown po polsku.

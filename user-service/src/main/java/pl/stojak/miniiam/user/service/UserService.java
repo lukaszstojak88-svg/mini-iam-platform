@@ -60,6 +60,8 @@ public class UserService {
     static final String ADMIN_ROLE = "ADMIN";
     static final String MANAGER_ROLE = "MANAGER";
     static final String SERVICE_ROLE = "SERVICE";
+    /** Upper limit of {@code size}; larger values are rejected with 400, never silently clamped. */
+    static final int MAX_PAGE_SIZE = 100;
     static final Set<String> SORTABLE_PROPERTIES =
             Set.of("username", "email", "firstName", "lastName", "enabled", "createdAt", "updatedAt");
 
@@ -79,6 +81,9 @@ public class UserService {
     // ---------------------------------------------------------------- queries
 
     public PageResponse<UserResponse> list(String search, Pageable pageable) {
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException("'size' must not exceed " + MAX_PAGE_SIZE + ".");
+        }
         for (Sort.Order order : pageable.getSort()) {
             if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
                 throw new InvalidRequestException("Unsupported sort property: " + order.getProperty());

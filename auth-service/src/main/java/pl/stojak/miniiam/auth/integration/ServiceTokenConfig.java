@@ -23,14 +23,19 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * Client Credentials tokens of the technical client {@code mini-iam-admin} (registration {@value #REGISTRATION_ID}),
- * shared by the Keycloak Admin API client and the Feign clients of other services. Tokens are cached by
- * {@link OAuth2AuthorizedClientService} and refreshed when expired.
+ * Client Credentials tokens of the two technical clients, obtained through one shared
+ * {@link OAuth2AuthorizedClientManager} (cached by {@link OAuth2AuthorizedClientService}, refreshed when expired):
+ * <ul>
+ *     <li>{@value #ADMIN_REGISTRATION_ID} ({@code mini-iam-admin}) - Keycloak Admin API only;</li>
+ *     <li>{@value #SERVICE_REGISTRATION_ID} ({@code mini-iam-service}) - service-to-service calls (role SERVICE).</li>
+ * </ul>
+ * Keeping them apart means a token sent to another service never carries Admin API privileges.
  */
 @Configuration
 public class ServiceTokenConfig {
 
-    public static final String REGISTRATION_ID = "keycloak-admin";
+    public static final String ADMIN_REGISTRATION_ID = "keycloak-admin";
+    public static final String SERVICE_REGISTRATION_ID = "mini-iam-service";
 
     /** Tokens are not tied to the end user: all calls are made on behalf of the service itself. */
     public static final Authentication SERVICE_PRINCIPAL =

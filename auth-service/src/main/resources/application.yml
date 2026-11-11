@@ -21,13 +21,19 @@ spring:
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/mini-iam/protocol/openid-connect/certs}
           audiences: ${KEYCLOAK_AUDIENCE:mini-iam-api}
       client:
-        # Technical client used for the Keycloak Admin REST API (spec §5.4) and service-to-service calls (spec §7).
-        # The secret has no default on purpose.
+        # Two technical clients with separate privileges; the secrets have no default on purpose.
         registration:
+          # Keycloak Admin REST API only (spec §5.4): realm-management roles, no access to Mini IAM APIs.
           keycloak-admin:
             provider: keycloak
             client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:mini-iam-admin}
             client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+          # Service-to-service calls (spec §7): realm role SERVICE only, never sent to Keycloak Admin API.
+          mini-iam-service:
+            provider: keycloak
+            client-id: ${SERVICE_CLIENT_ID:mini-iam-service}
+            client-secret: ${SERVICE_CLIENT_SECRET}
             authorization-grant-type: client_credentials
         provider:
           keycloak:

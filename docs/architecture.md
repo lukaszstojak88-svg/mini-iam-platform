@@ -18,8 +18,8 @@
 
 ```text
 Angular SPA ──(Access Token JWT)──> user-service / auth-service / audit-service
-user-service ──OpenFeign (Client Credentials, ROLE_SERVICE)──> audit-service
-auth-service ──OpenFeign (Client Credentials, ROLE_SERVICE)──> audit-service
+user-service ──OpenFeign (Client Credentials mini-iam-service, ROLE_SERVICE)──> audit-service
+auth-service ──OpenFeign (Client Credentials mini-iam-service, ROLE_SERVICE)──> audit-service
 user-service, auth-service ──Admin REST API (mini-iam-admin)──> Keycloak
 
 Logi:
@@ -48,7 +48,7 @@ jednym `correlationId`.
 ```
 ADMIN ──PUT /api/users/{id}──> user-service ──Admin API──> Keycloak
                                     │ zapis profilu (schemat users)
-                                    │ po sukcesie: AuditEventPublisher (Feign, token Client Credentials, ROLE_SERVICE,
+                                    │ po sukcesie: AuditEventPublisher (Feign, token mini-iam-service, ROLE_SERVICE,
                                     │              X-Correlation-Id z MDC, timeouty 2 s/2 s, bez retry)  
                                     └──POST /internal/api/audit-events──> audit-service ──> audit.audit_events
 ```

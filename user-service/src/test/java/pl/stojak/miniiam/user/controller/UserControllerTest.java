@@ -22,6 +22,7 @@ import pl.stojak.miniiam.user.dto.response.UserResponse;
 import pl.stojak.miniiam.user.exception.BusinessRuleViolationException;
 import pl.stojak.miniiam.user.exception.ErrorCode;
 import pl.stojak.miniiam.user.exception.GlobalExceptionHandler;
+import pl.stojak.miniiam.user.exception.InvalidRequestException;
 import pl.stojak.miniiam.user.exception.UserNotFoundException;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakConflictException;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakUnavailableException;
@@ -193,15 +194,26 @@ class UserControllerTest {
     }
 
     @Test
-    void pageSizeIsCappedAt100AndDefaultSortIsCreatedAtDesc() throws Exception {
-        when(userService.list(any(), any())).thenReturn(new PageResponse<>(List.of(), 0, 100, 0, 0));
+    void pageSizeIsNotClampedAndDefaultSortIsCreatedAtDesc() throws Exception {
+        when(userService.list(any(), any())).thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
         mockMvc.perform(get("/api/users").param("size", "500").with(as("ADMIN"))).andExpect(status().isOk());
 
+        // The requested size reaches the service unchanged; the service enforces the limit (rejects > 100).
         var captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
         verify(userService).list(isNull(), captor.capture());
-        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(500);
         assertThat(captor.getValue().getSort().getOrderFor("createdAt")).isNotNull();
+    }
+
+    @Test
+    void pageSizeAboveLimitIsBadRequest() throws Exception {
+        when(userService.list(any(), any())).thenThrow(new InvalidRequestException("'size' must not exceed 100."));
+
+        mockMvc.perform(get("/api/users").param("size", "101").with(as("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.detail").value("'size' must not exceed 100."));
     }
 
     @Test

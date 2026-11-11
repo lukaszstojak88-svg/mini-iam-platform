@@ -301,14 +301,25 @@ modyfikacji ani usuwania wpisów przez API użytkownika.
     -   Standard Flow włączony;
     -   PKCE `S256`;
     -   bez client secret w aplikacji Angular.
--   Klient techniczny backendu: `mini-iam-admin`
+-   Klient techniczny Admin API: `mini-iam-admin`
     -   confidential client;
     -   Service Accounts Enabled;
     -   Client Credentials Flow;
-    -   tylko minimalne wymagane uprawnienia administracyjne;
-    -   service account ma realm role `SERVICE`, a token uzyskany przez
-        Client Credentials jest używany w wywołaniach OpenFeign między
-        serwisami.
+    -   tylko minimalne wymagane uprawnienia administracyjne
+        (`realm-management`);
+    -   token służy wyłącznie do Keycloak Admin API (bez audience API
+        Mini IAM);
+    -   service account ma przypisaną realm role `SERVICE` jako
+        znacznik konta technicznego (ochrona przed zmianą ról), ale nie
+        trafia ona do tokena (brak scope mappingu).
+-   Klient techniczny serwis–serwis: `mini-iam-service`
+    -   confidential client, Service Accounts Enabled, Client
+        Credentials Flow;
+    -   service account ma tylko realm role `SERVICE`, a token jest
+        używany w wywołaniach OpenFeign między serwisami;
+    -   bez uprawnień do Keycloak Admin API.
+-   Rozdzielenie klientów sprawia, że token przekazywany innemu
+    serwisowi nie niesie uprawnień administracyjnych Keycloak.
 -   Audience dla API: skonfigurowana tak, aby token dostępu był
     przeznaczony dla backendów.
 -   Role aplikacyjne: `ADMIN`, `MANAGER`, `USER`, `AUDITOR`.
@@ -485,8 +496,8 @@ Przyjęte zachowanie (Etap 3):
     `errors`, `KEYCLOAK_UNAVAILABLE`), używaną przez UI do komunikatów;
 -   sortowanie listy tylko po: `username`, `email`, `firstName`,
     `lastName`, `enabled`, `createdAt`, `updatedAt` (domyślnie
-    `createdAt,desc`); inne pole to 400; `size` powyżej 100 jest
-    przycinany do 100.
+    `createdAt,desc`); inne pole to 400; `size` powyżej 100 to 400
+    `INVALID_REQUEST` (bez cichego przycinania).
 
 ### 6.2 Auth Service
 
@@ -577,7 +588,7 @@ Wymagania:
 
 -   wpisy audytowe są niezmienne przez publiczne API;
 -   lista obsługuje paginację i filtry: typ zdarzenia, aktor, użytkownik
-    docelowy, zakres dat;
+    docelowy, zakres dat; `size` powyżej 100 to 400;
 -   każde zdarzenie ma UUID i czas UTC;
 -   nie zapisujemy tokenów, haseł, client secrets ani innych danych
     uwierzytelniających;

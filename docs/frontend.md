@@ -131,7 +131,8 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Spr�
   - `GET /api/audit-events?eventType&actorUserId&targetUserId&from&to&page&size&sort` (ADMIN, AUDITOR) →
     `{content, page, size, totalElements, totalPages}`; element: `{id, eventType, actorUserId, targetUserId,
     details, occurredAt, correlationId}`; `from` włącznie, `to` wyłącznie (ISO-8601 UTC); `sort` tylko
-    `occurredAt` / `eventType` (inne → 400), domyślnie `occurredAt,desc`; `size` ≤ 100;
+    `occurredAt` / `eventType` (inne → 400), domyślnie `occurredAt,desc`; `size` > 100 → 400 (UI nie wysyła
+    większych stron);
   - `GET /api/audit-events/{id}` → jeden wpis, brak → 404 `AUDIT_EVENT_NOT_FOUND`;
   - typy: `USER_CREATED`, `USER_UPDATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_DELETED`, `ROLE_ASSIGNED`,
     `ROLE_REMOVED` (nieznany typ w filtrze → 400); `details`: `{username}`, `{changedFields: [...]}`, `{roleName}`

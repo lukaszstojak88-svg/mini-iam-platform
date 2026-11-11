@@ -42,6 +42,8 @@ Pakiet bazowy `pl.stojak.miniiam.<user|auth|audit>`:
 ## 3. Błędy (spec §15, §12.4)
 
 - `@RestControllerAdvice` zwraca `ProblemDetail` (`application/problem+json`); `spring.mvc.problemdetails.enabled=true` już jest.
+- Listy: `size` > 100 → 400 `INVALID_REQUEST` (stała `MAX_PAGE_SIZE` w serwisie; `max-page-size` wyłączone,
+  bez cichego przycinania).
 - Kody: 400 walidacja, 404 brak zasobu, 409 konflikt/duplikat, 502/503 problem z Keycloak lub innym serwisem.
 - Nigdy nie zwracaj stack trace, komunikatów Keycloak ani szczegółów infrastruktury.
 - 401/403 obsługują już `ProblemDetailAuthenticationEntryPoint` / `ProblemDetailAccessDeniedHandler`.
@@ -57,7 +59,7 @@ Pakiet bazowy `pl.stojak.miniiam.<user|auth|audit>`:
 ## 5. Komunikacja i audyt (spec §6.3, §7)
 
 - Wywołania między serwisami: OpenFeign (BOM Spring Cloud jest w parent `pom.xml`), token Client Credentials
-  klienta `mini-iam-admin`, nagłówek `X-Correlation-Id` z MDC (`CorrelationIdFilter.MDC_KEY`).
+  klienta `mini-iam-service` (`ServiceAccessTokenProvider`; nigdy token `mini-iam-admin` z Admin API), nagłówek `X-Correlation-Id` z MDC (`CorrelationIdFilter.MDC_KEY`).
 - Każdy klient Feign: connect/read timeout, mapowanie błędów na kontrolowane wyjątki, retry tylko dla
   idempotentnych operacji i ze skończoną liczbą prób.
 - Nie wołaj innych serwisów wewnątrz długiej transakcji DB.

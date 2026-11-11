@@ -149,6 +149,17 @@ class AuditEventApiIT {
     }
 
     @Test
+    void pageSizeAboveLimitIsRejectedNotClamped() throws Exception {
+        mockMvc.perform(get("/api/audit-events").with(as("ADMIN")).param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.detail").value("'size' must not exceed 100."));
+        mockMvc.perform(get("/api/audit-events").with(as("ADMIN")).param("size", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(100));
+    }
+
+    @Test
     void unknownEventIs404() throws Exception {
         mockMvc.perform(get("/api/audit-events/00000000-0000-0000-0000-000000000000").with(as("ADMIN")))
                 .andExpect(status().isNotFound())

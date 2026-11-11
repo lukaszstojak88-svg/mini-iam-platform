@@ -31,7 +31,7 @@
   "defaultRole": { "name": "default-roles-mini-iam" },
   "scopeMappings": [
     { "client": "mini-iam-frontend", "roles": ["ADMIN", "MANAGER", "USER", "AUDITOR"] },
-    { "client": "mini-iam-admin", "roles": ["SERVICE"] }
+    { "client": "mini-iam-service", "roles": ["SERVICE"] }
   ],
   "clientScopeMappings": {
     "realm-management": [
@@ -76,7 +76,7 @@
     },
     {
       "clientId": "mini-iam-admin",
-      "name": "Mini IAM backend (technical client)",
+      "name": "Mini IAM Keycloak Admin API client (technical)",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -88,6 +88,22 @@
       "serviceAccountsEnabled": true,
       "fullScopeAllowed": false,
       "defaultClientScopes": ["basic", "roles", "profile", "email", "web-origins", "acr", "kc-admin-api"],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "mini-iam-service",
+      "name": "Mini IAM service-to-service client (technical)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${MINI_IAM_SERVICE_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["basic", "roles", "profile", "email", "web-origins", "acr"],
       "optionalClientScopes": [],
       "protocolMappers": [
         {
@@ -114,6 +130,12 @@
       "clientRoles": {
         "realm-management": ["view-users", "query-users", "manage-users", "view-realm"]
       }
+    },
+    {
+      "username": "service-account-mini-iam-service",
+      "enabled": true,
+      "serviceAccountClientId": "mini-iam-service",
+      "realmRoles": ["SERVICE"]
     },
     {
       "username": "admin",

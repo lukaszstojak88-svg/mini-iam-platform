@@ -23,7 +23,8 @@ spring:
   data:
     web:
       pageable:
-        max-page-size: 100
+        # No silent clamping: the service rejects size > 100 with 400 (see MAX_PAGE_SIZE).
+        max-page-size: 2147483647
         default-page-size: 20
   datasource:
     url: ${AUDIT_SERVICE_DB_URL:jdbc:postgresql://localhost:5432/mini_iam}

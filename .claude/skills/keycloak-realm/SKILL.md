@@ -12,7 +12,8 @@ Używa go Docker Compose oraz test `auth-service/.../KeycloakJwtValidationIT.jav
 
 1. **Sekrety tylko jako placeholdery** `${NAZWA}` (Keycloak podstawia zmienne środowiskowe przy imporcie).
    Każdą nową zmienną dodaj w trzech miejscach: `.env.example` (`change-me`), sekcja `keycloak.environment`
-   w `infrastructure/docker-compose.yml`, `withEnv(...)` w `KeycloakJwtValidationIT`.
+   w `infrastructure/docker-compose.yml`, `withEnv(...)` we wszystkich IT z kontenerem Keycloak
+   (`KeycloakJwtValidationIT`, `RoleManagementKeycloakIT`, `UserServiceKeycloakIT`).
 2. **`fullScopeAllowed: false`** na klientach - token zawiera tylko role z mapowań. Nowa rola realmu, która ma trafić
    do tokena klienta, wymaga wpisu w `scopeMappings` (realm roles) lub `clientScopeMappings` (client roles).
 3. **Admin API (Keycloak >= 26.8.2):** klient wołający `/admin/realms/...` musi mieć `kc-admin-api` w
@@ -22,8 +23,14 @@ Używa go Docker Compose oraz test `auth-service/.../KeycloakJwtValidationIT.jav
    domyślnych (m.in. `roles`, który daje `realm_access`). Mappery dodawaj na kliencie (`protocolMappers`).
 5. **Audience:** tokeny dla API muszą mieć `aud` = `mini-iam-api` (mapper `oidc-audience-mapper` na kliencie);
    backend odrzuca tokeny bez niego.
-6. **Minimalne uprawnienia:** service account `mini-iam-admin` ma `SERVICE` + `realm-management`:
-   `view-users`, `query-users`, `manage-users`, `view-realm`. Nowe uprawnienie tylko z uzasadnieniem (spec §5.4).
+6. **Minimalne uprawnienia, dwa klienty techniczne:**
+   - `mini-iam-admin` — tylko Keycloak Admin API: `realm-management` (`view-users`, `query-users`,
+     `manage-users`, `view-realm`) + scope `kc-admin-api`; **bez** audience `mini-iam-api` i bez `SERVICE`
+     w scope mappingu (token nie działa na API Mini IAM);
+   - `mini-iam-service` — tylko serwis–serwis: realm role `SERVICE` w scope mappingu + audience `mini-iam-api`;
+     **bez** `kc-admin-api` i ról `realm-management`.
+   Oba service accounts mają przypisaną rolę `SERVICE` (znacznik konta technicznego dla `SERVICE_ACCOUNT_PROTECTED`).
+   Nowe uprawnienie tylko z uzasadnieniem (spec §5.1, §5.4).
 7. **Role:** aplikacyjne `ADMIN`, `MANAGER`, `USER`, `AUDITOR` (stałe, spec §2); `USER` w composite
    `default-roles-mini-iam`; `SERVICE` wyłącznie dla service accounts. Bez ról tworzonych „z UI”.
 8. **Frontend client** `mini-iam-frontend`: public, PKCE `S256`, bez direct access grants; redirect/web origins
@@ -45,12 +52,20 @@ Uprzedź użytkownika, że `down -v` usuwa dane z wolumenów.
 ```bash
 ./mvnw verify -pl auth-service        # KeycloakJwtValidationIT na tym samym pliku realmu
 set -a; . ./.env; set +a
-TOKEN=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-admin \
-  -d "client_secret=$MINI_IAM_ADMIN_CLIENT_SECRET" \
-  http://localhost:8080/realms/mini-iam/protocol/openid-connect/token | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
-echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | grep -oE '"(aud|scope|realm_access|resource_access)":[^}]*\}?'
-curl -s -o /dev/null -w 'admin api: %{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+KC=http://localhost:8080/realms/mini-iam/protocol/openid-connect
+AT=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-admin \
+  -d "client_secret=$MINI_IAM_ADMIN_CLIENT_SECRET" $KC/token | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
+ST=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-service \
+  -d "client_secret=$MINI_IAM_SERVICE_CLIENT_SECRET" $KC/token | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
+for T in "$AT" "$ST"; do
+  echo "$T" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | grep -oE '"(aud|scope|realm_access|resource_access)":[^}]*\}?'
+done
+curl -s -o /dev/null -w 'admin api (admin): %{http_code}\n' -H "Authorization: Bearer $AT" \
   http://localhost:8080/admin/realms/mini-iam/roles                # 200
+curl -s -o /dev/null -w 'admin api (service): %{http_code}\n' -H "Authorization: Bearer $ST" \
+  http://localhost:8080/admin/realms/mini-iam/roles                # 401/403
+curl -s -o /dev/null -w 'mini-iam api (admin): %{http_code}\n' -H "Authorization: Bearer $AT" \
+  http://localhost:8082/api/auth/me                                # 401
 ```
 
 Przy problemach z tokenem: tymczasowo `KC_LOG_LEVEL=INFO,org.keycloak.services:debug` (override compose

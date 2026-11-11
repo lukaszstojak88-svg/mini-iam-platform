@@ -59,6 +59,7 @@ services:
       KC_HEALTH_ENABLED: "true"
       # Placeholders resolved in realm-import/mini-iam-realm.json
       MINI_IAM_ADMIN_CLIENT_SECRET: ${MINI_IAM_ADMIN_CLIENT_SECRET:?set MINI_IAM_ADMIN_CLIENT_SECRET in .env}
+      MINI_IAM_SERVICE_CLIENT_SECRET: ${MINI_IAM_SERVICE_CLIENT_SECRET:?set MINI_IAM_SERVICE_CLIENT_SECRET in .env}
       MINI_IAM_ADMIN_PASSWORD: ${MINI_IAM_ADMIN_PASSWORD:?set MINI_IAM_ADMIN_PASSWORD in .env}
     volumes:
       - ./keycloak/realm-import:/opt/keycloak/data/import:ro
@@ -92,7 +93,8 @@ services:
       KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080
       KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/mini-iam/protocol/openid-connect/token
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${MINI_IAM_ADMIN_CLIENT_SECRET}
-      # Feign client of audit-service (service-to-service, spec §7)
+      # Feign client of audit-service: technical client mini-iam-service (role SERVICE only, spec §7)
+      SERVICE_CLIENT_SECRET: ${MINI_IAM_SERVICE_CLIENT_SECRET}
       AUDIT_SERVICE_URL: http://audit-service:8083
     ports:
       - "127.0.0.1:${USER_SERVICE_PORT:-8081}:8081"
@@ -121,7 +123,8 @@ services:
       KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080
       KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/mini-iam/protocol/openid-connect/token
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${MINI_IAM_ADMIN_CLIENT_SECRET}
-      # Feign client of audit-service (service-to-service, spec §7)
+      # Feign client of audit-service: technical client mini-iam-service (role SERVICE only, spec §7)
+      SERVICE_CLIENT_SECRET: ${MINI_IAM_SERVICE_CLIENT_SECRET}
       AUDIT_SERVICE_URL: http://audit-service:8083
     ports:
       - "127.0.0.1:${AUTH_SERVICE_PORT:-8082}:8082"

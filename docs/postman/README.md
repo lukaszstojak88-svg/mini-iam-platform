@@ -9,7 +9,7 @@
 
 1. Postman → **Import** → oba pliki z tego katalogu.
 2. W prawym górnym rogu wybierz środowisko **Mini IAM - local**.
-3. Uzupełnij w środowisku zmienną `adminClientSecret` wartością `MINI_IAM_ADMIN_CLIENT_SECRET` z `.env`
+3. Uzupełnij w środowisku zmienną `serviceClientSecret` wartością `MINI_IAM_SERVICE_CLIENT_SECRET` z `.env`
    (potrzebna tylko dla tokena serwisowego). Nie zapisuj sekretu z powrotem do pliku w repozytorium —
    zmienna ma typ *secret*, a jej wartość trzymaj jako *Current value*.
 4. Uruchom środowisko: `docker compose up -d --build`.
@@ -21,7 +21,8 @@
   **Get New Access Token** → zaloguj się w oknie Keycloak (np. `admin` / `MINI_IAM_ADMIN_PASSWORD`) → **Use Token**.
   Okno logowania jest wbudowane w Postmana i przechwytuje przekierowanie, więc frontend nie musi działać.
   Access token żyje 5 minut — po wygaśnięciu pobierz nowy (albo włącz w Postmanie automatyczne odświeżanie).
-- **Token serwisowy**: request *00 Tokeny → Token serwisowy (client_credentials)* zapisuje go w `serviceToken`.
+- **Token serwisowy** (klient `mini-iam-service`, tylko rola `SERVICE`): request *00 Tokeny → Token serwisowy
+  (client_credentials)* zapisuje go w `serviceToken`.
   Ma tylko rolę techniczną `SERVICE`, dlatego służy w folderze *05* do pokazania odmów dostępu.
 - Aby sprawdzić inne role, zaloguj się na konto z rolą `MANAGER`, `USER` lub `AUDITOR` (np. `AUDITOR` widzi
   tylko folder *04 audit-service*; konto tworzy

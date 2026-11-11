@@ -104,11 +104,16 @@ Konfiguracja realmu:
 
 - role realmu: `ADMIN`, `MANAGER`, `USER`, `AUDITOR` + techniczna `SERVICE`; `USER` w `default-roles-mini-iam`;
 - `mini-iam-frontend` — public client, Authorization Code + PKCE S256, `http://localhost:4200`;
-- `mini-iam-admin` — confidential client z service account (Client Credentials), rola `SERVICE` oraz
-  `realm-management`: `view-users`, `query-users`, `manage-users`, `view-realm`; scope `kc-admin-api`
-  (wymagany przez Admin API od Keycloak 26.8.2);
-- audience `mini-iam-api` w tokenach obu klientów; `fullScopeAllowed=false` (tokeny zawierają tylko
-  role przypisane w scope mappings);
+- dwa confidential clients z service account (Client Credentials), rozdzielone wg uprawnień:
+  - `mini-iam-admin` — **tylko Keycloak Admin API** (user-service, auth-service): role `realm-management`
+    `view-users`, `query-users`, `manage-users`, `view-realm`; scope `kc-admin-api` (wymagany od Keycloak
+    26.8.2); bez audience `mini-iam-api`, więc jego token nie działa na API Mini IAM;
+  - `mini-iam-service` — **tylko wywołania serwis–serwis** (Feign → audit-service): realm role `SERVICE`
+    i audience `mini-iam-api`, bez ról `realm-management` (token nie działa na Admin API);
+- oba konta techniczne mają przypisaną rolę `SERVICE` (znacznik konta serwisowego — auth-service nie pozwala
+  zmieniać ich ról), ale tylko `mini-iam-service` ma ją w scope mappingu, więc tylko jego token ją zawiera;
+- audience `mini-iam-api` w tokenach `mini-iam-frontend` i `mini-iam-service`; `fullScopeAllowed=false`
+  (tokeny zawierają tylko role przypisane w scope mappings);
 - czas życia access tokena: 5 minut.
 
 ### Dodatkowe konta testowe (inne role)
@@ -124,7 +129,7 @@ lub `AUDITOR`. Rola `USER` jest nadawana automatycznie. Alternatywnie przez API:
   (`http://localhost:8080/realms/mini-iam`), `exp` i `aud` (`mini-iam-api`).
 - Role z `realm_access.roles` są jawnie mapowane na `ROLE_<NAZWA>`; wbudowane role Keycloak są pomijane.
 - Reguły: `/actuator/health` publiczny, `/internal/api/**` tylko `ROLE_SERVICE` (token Client Credentials
-  klienta `mini-iam-admin`), `/api/**` wymaga uwierzytelnienia (szczegółowe reguły ról — `@PreAuthorize`
+  klienta `mini-iam-service`), `/api/**` wymaga uwierzytelnienia (szczegółowe reguły ról — `@PreAuthorize`
   przy endpointach), pozostałe ścieżki są blokowane.
 - 401/403 zwracane jako `application/problem+json` (RFC 9457) z nagłówkiem `X-Correlation-Id`.
 - CORS: tylko originy z `CORS_ALLOWED_ORIGINS` (domyślnie `http://localhost:4200`).
@@ -133,8 +138,8 @@ Sprawdzenie z linii poleceń (token serwisowy):
 
 ```bash
 set -a; . ./.env; set +a
-TOKEN=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-admin \
-  -d "client_secret=$MINI_IAM_ADMIN_CLIENT_SECRET" \
+TOKEN=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-service \
+  -d "client_secret=$MINI_IAM_SERVICE_CLIENT_SECRET" \
   http://localhost:8080/realms/mini-iam/protocol/openid-connect/token | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
 curl -i http://localhost:8082/api/auth/me                                  # 401
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8082/api/auth/me   # 200
@@ -166,6 +171,8 @@ curl -X DELETE http://localhost:8081/api/users/<id> -H "Authorization: Bearer $T
 
 Zachowanie:
 
+- **Lista:** `size` domyślnie 20; `size` > 100 → 400 `INVALID_REQUEST` (bez cichego przycinania); `sort` tylko po
+  `username`, `email`, `firstName`, `lastName`, `enabled`, `createdAt`, `updatedAt`.
 - **Nowe konto** powstaje w Keycloak z hasłem tymczasowym — przy pierwszym logowaniu Keycloak wymusza zmianę
   hasła. Hasło trafia tylko do Keycloak (nie jest zapisywane, logowane ani zwracane). Rola `USER` jest nadawana
   automatycznie (default roles). `username`/`email` zapisywane małymi literami; `username` jest niezmienny.
@@ -215,7 +222,7 @@ Reguły i kody błędów (ProblemDetail z polem `code`):
 | rola spoza `ADMIN`/`MANAGER`/`AUDITOR` (`USER`, `SERVICE`, nieznana; nazwy wielkimi literami) | 400 `ROLE_NOT_ASSIGNABLE` |
 | niepoprawny `userId` / puste `roleName` | 400 `VALIDATION_FAILED` |
 | zmiana własnych ról | 403 `SELF_ROLE_CHANGE` |
-| konto serwisowe (np. `service-account-mini-iam-admin`) | 403 `SERVICE_ACCOUNT_PROTECTED` |
+| konto serwisowe (`service-account-mini-iam-admin`, `service-account-mini-iam-service`) | 403 `SERVICE_ACCOUNT_PROTECTED` |
 | użytkownik nie istnieje / rola nie istnieje w realmie | 404 `USER_NOT_FOUND` / `ROLE_NOT_FOUND` |
 | odebranie roli, której użytkownik nie ma bezpośrednio | 404 `ROLE_NOT_ASSIGNED` |
 | rola już przypisana | 409 `ROLE_ALREADY_ASSIGNED` |
@@ -234,9 +241,9 @@ API `http://localhost:8083` (spec §6.3). Operacje administracyjne są zapisywan
 
 | Endpoint | Role | Opis |
 |---|---|---|
-| `GET /api/audit-events` | ADMIN, AUDITOR | lista z filtrami `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie); `page`, `size` ≤ 100, `sort` = `occurredAt` / `eventType` (domyślnie `occurredAt,desc`) |
+| `GET /api/audit-events` | ADMIN, AUDITOR | lista z filtrami `eventType`, `actorUserId`, `targetUserId`, `from` (włącznie), `to` (wyłącznie); `page`, `size` (domyślnie 20, > 100 → 400 `INVALID_REQUEST`), `sort` = `occurredAt` / `eventType` (domyślnie `occurredAt,desc`) |
 | `GET /api/audit-events/{id}` | ADMIN, AUDITOR | szczegóły; brak → 404 `AUDIT_EVENT_NOT_FOUND` |
-| `POST /internal/api/audit-events` | tylko `ROLE_SERVICE` (token Client Credentials) | zapis zdarzenia przez serwisy → 201 `{id}` |
+| `POST /internal/api/audit-events` | tylko `ROLE_SERVICE` (token Client Credentials klienta `mini-iam-service`) | zapis zdarzenia przez serwisy → 201 `{id}` |
 
 ```bash
 curl "http://localhost:8083/api/audit-events?targetUserId=<keycloakId>&sort=occurredAt,asc" \
@@ -264,10 +271,7 @@ Rejestrowane zdarzenia (`actorUserId`, `targetUserId` = keycloakId; `correlation
 - **Dane:** w `details` nie ma haseł (także tymczasowych), tokenów ani sekretów; e-maile i wartości pól nie są
   zapisywane. audit-service odrzuca nieznane typy zdarzeń i `details` większe niż 4 KB / 20 kluczy (400).
 - **Znane ograniczenia:** niezmienność zapewnia API (brak edycji/usuwania), nie uprawnienia w bazie — użytkownik DB
-  `audit_service` jest właścicielem schematu (potrzebne do migracji Liquibase). Wywołania serwis–serwis używają tego samego tokena
-  klienta `mini-iam-admin` co Keycloak Admin API (role `realm-management`), więc audit-service otrzymuje token
-  szerszy, niż potrzebuje (wystarczyłaby rola `SERVICE`); osobny klient techniczny tylko z `SERVICE` to możliwe
-  utwardzenie. Audyt działa w wątku żądania — gdy audit-service nie odpowiada, udana operacja kończy się po
+  `audit_service` jest właścicielem schematu (potrzebne do migracji Liquibase). Audyt działa w wątku żądania — gdy audit-service nie odpowiada, udana operacja kończy się po
   timeoucie (do ok. 2 s).
 
 ## 10. Logi i śledzenie żądań (ELK)
@@ -315,7 +319,9 @@ Nie wymagają uruchomionego Compose ani ELK.
 | `npm ci` / `npx` kończy się błędem certyfikatu (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) | `NODE_OPTIONS=--use-system-ca` (używa magazynu certyfikatów systemu) |
 | Frontend: pętla przekierowań lub 401 po zalogowaniu | Keycloak i serwisy muszą działać (`docker compose ps`); issuer w tokenie to `http://localhost:8080/...` — otwieraj Keycloak przez `localhost`, nie `127.0.0.1`. |
 | Zmiana roli nie jest widoczna od razu | Role są w tokenie; zmiana obowiązuje po odświeżeniu tokena (do 5 min) lub ponownym zalogowaniu (spec §11.2). |
-| auth-service nie startuje: `Could not resolve placeholder 'KEYCLOAK_ADMIN_CLIENT_SECRET'` (uruchomienie poza Dockerem) | Ustaw zmienną `KEYCLOAK_ADMIN_CLIENT_SECRET` na wartość `MINI_IAM_ADMIN_CLIENT_SECRET` z `.env` (w Compose jest przekazywana automatycznie). |
+| user-/auth-service nie startuje: `Could not resolve placeholder 'KEYCLOAK_ADMIN_CLIENT_SECRET'` lub `'SERVICE_CLIENT_SECRET'` (uruchomienie poza Dockerem) | Ustaw `KEYCLOAK_ADMIN_CLIENT_SECRET` = `MINI_IAM_ADMIN_CLIENT_SECRET` i `SERVICE_CLIENT_SECRET` = `MINI_IAM_SERVICE_CLIENT_SECRET` z `.env` (w Compose przekazywane automatycznie). |
+| `required variable MINI_IAM_SERVICE_CLIENT_SECRET is missing` / audyt nie zapisuje się po aktualizacji repo | Dodaj `MINI_IAM_SERVICE_CLIENT_SECRET` do `.env` (wzór w `.env.example`) i zrób czysty start `docker compose down -v` (nowy klient trafia do Keycloak tylko przy imporcie realmu; **kasuje dane**). |
+| Brak wpisów audytu, w logu `Audit event NOT recorded ... HTTP 401` | Sekret `MINI_IAM_SERVICE_CLIENT_SECRET` w `.env` różni się od zaimportowanego do Keycloak albo realm jest sprzed dodania klienta `mini-iam-service` — `docker compose down -v`. |
 | auth-service: 403 `SELF_ROLE_CHANGE` przy zmianie ról | Administrator nie zmienia własnych ról (spec §2) — zmianę musi wykonać inny ADMIN. |
 | user-service / auth-service: 502 `KEYCLOAK_INTEGRATION_ERROR` | Klient `mini-iam-admin` odrzucony przez Keycloak — sprawdź, czy `MINI_IAM_ADMIN_CLIENT_SECRET` w `.env` jest taki sam jak przy imporcie realmu (zmiana sekretu wymaga `docker compose down -v`). |
 | `required variable ... is missing a value` przy `docker compose` | Brak `.env` lub brakująca zmienna — skopiuj `.env.example` do `.env`. |

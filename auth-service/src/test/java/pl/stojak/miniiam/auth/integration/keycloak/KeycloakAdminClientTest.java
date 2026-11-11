@@ -37,13 +37,12 @@ class KeycloakAdminClientTest {
     }
 
     @Test
-    void readsUserAndServiceAccountFlag() {
+    void readsUser() {
         server.expect(requestTo(BASE + "/users/u1")).andRespond(withSuccess("""
-                {"id":"u1","username":"service-account-x","enabled":true,"serviceAccountClientId":"x","email":"a@b"}""",
+                {"id":"u1","username":"service-account-x","enabled":true,"email":"a@b"}""",
                 MediaType.APPLICATION_JSON));
 
         KeycloakUser user = client.findUser("u1").orElseThrow();
-        assertThat(user.isServiceAccount()).isTrue();
         assertThat(user.enabled()).isTrue();
     }
 

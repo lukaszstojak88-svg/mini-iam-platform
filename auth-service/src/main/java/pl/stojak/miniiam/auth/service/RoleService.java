@@ -72,7 +72,7 @@ public class RoleService {
         String id = user.id();
         ensureNotSelf(id, actorId);
         List<KeycloakRole> effective = keycloak.getEffectiveRealmRoles(id);
-        ensureNotServiceAccount(user, effective);
+        ensureNotServiceAccount(effective);
         if (containsRole(effective, role.name())) {
             throw DomainException.conflict(ErrorCode.ROLE_ALREADY_ASSIGNED, "The user already has this role.");
         }
@@ -91,7 +91,7 @@ public class RoleService {
         KeycloakUser user = requireUser(userId);
         String id = user.id();
         ensureNotSelf(id, actorId);
-        ensureNotServiceAccount(user, keycloak.getEffectiveRealmRoles(id));
+        ensureNotServiceAccount(keycloak.getEffectiveRealmRoles(id));
         KeycloakRole mapping = keycloak.getDirectRealmRoles(id).stream()
                 .filter(r -> role.name().equals(r.name()))
                 .findFirst()
@@ -131,9 +131,14 @@ public class RoleService {
                 .orElseThrow(() -> DomainException.notFound(ErrorCode.USER_NOT_FOUND, "User not found."));
     }
 
-    /** Hardening: roles of technical accounts are managed only in the realm configuration. */
-    private static void ensureNotServiceAccount(KeycloakUser user, Collection<KeycloakRole> effectiveRoles) {
-        if (user.isServiceAccount() || containsRole(effectiveRoles, SERVICE_ROLE)) {
+    /**
+     * Hardening: roles of technical accounts are managed only in the realm configuration. Technical accounts are
+     * recognised by the assigned SERVICE realm role - every service account in the realm import must keep it
+     * (also {@code service-account-mini-iam-admin}, where it is not in the token), since the Admin API user
+     * representation does not identify service accounts.
+     */
+    private static void ensureNotServiceAccount(Collection<KeycloakRole> effectiveRoles) {
+        if (containsRole(effectiveRoles, SERVICE_ROLE)) {
             throw DomainException.forbidden(ErrorCode.SERVICE_ACCOUNT_PROTECTED,
                     "Roles of service accounts cannot be changed.");
         }

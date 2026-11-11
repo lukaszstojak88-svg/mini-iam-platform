@@ -65,6 +65,7 @@ class UserServiceKeycloakIT {
     static final KeycloakContainer KEYCLOAK = new KeycloakContainer("quay.io/keycloak/keycloak:26.8.2")
             .withRealmImportFile("keycloak/mini-iam-realm.json")
             .withEnv("MINI_IAM_ADMIN_CLIENT_SECRET", CLIENT_SECRET)
+            .withEnv("MINI_IAM_SERVICE_CLIENT_SECRET", "it-service-client-secret")
             .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password");
 
     @DynamicPropertySource
@@ -73,6 +74,8 @@ class UserServiceKeycloakIT {
         registry.add("spring.security.oauth2.client.provider.keycloak.token-uri",
                 () -> KEYCLOAK.getAuthServerUrl() + "/realms/" + REALM + "/protocol/openid-connect/token");
         registry.add("spring.security.oauth2.client.registration.keycloak-admin.client-secret", () -> CLIENT_SECRET);
+        registry.add("spring.security.oauth2.client.registration.mini-iam-service.client-secret",
+                () -> "it-service-client-secret");
     }
 
     @Autowired

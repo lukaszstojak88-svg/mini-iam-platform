@@ -63,6 +63,7 @@ class RoleManagementKeycloakIT {
     static final KeycloakContainer KEYCLOAK = new KeycloakContainer("quay.io/keycloak/keycloak:26.8.2")
             .withRealmImportFile("keycloak/mini-iam-realm.json")
             .withEnv("MINI_IAM_ADMIN_CLIENT_SECRET", CLIENT_SECRET)
+            .withEnv("MINI_IAM_SERVICE_CLIENT_SECRET", "it-service-client-secret")
             .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password");
 
     private static final RestClient REST = RestClient.create();
@@ -77,6 +78,8 @@ class RoleManagementKeycloakIT {
         registry.add("spring.security.oauth2.client.provider.keycloak.token-uri",
                 () -> realmUrl() + "/protocol/openid-connect/token");
         registry.add("spring.security.oauth2.client.registration.keycloak-admin.client-secret", () -> CLIENT_SECRET);
+        registry.add("spring.security.oauth2.client.registration.mini-iam-service.client-secret",
+                () -> "it-service-client-secret");
     }
 
     @BeforeAll
@@ -209,11 +212,13 @@ class RoleManagementKeycloakIT {
 
     @Test
     void serviceAccountsAndUnknownUsersAreRejected() throws Exception {
-        String serviceAccountId = findUserId("service-account-mini-iam-admin");
-
-        mockMvc.perform(assign(serviceAccountId, "ADMIN").with(admin()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("SERVICE_ACCOUNT_PROTECTED"));
+        // Both technical accounts carry the SERVICE role mapping that marks service accounts. For mini-iam-admin
+        // it is not in the client's scope mapping, so it never reaches that client's tokens.
+        for (String serviceAccount : List.of("service-account-mini-iam-admin", "service-account-mini-iam-service")) {
+            mockMvc.perform(assign(findUserId(serviceAccount), "ADMIN").with(admin()))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("SERVICE_ACCOUNT_PROTECTED"));
+        }
         mockMvc.perform(get(rolesUrl(UUID.randomUUID().toString())).with(admin()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));

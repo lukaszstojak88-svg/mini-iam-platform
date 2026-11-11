@@ -43,8 +43,11 @@ set -a; . ./.env; set +a
 KC=http://localhost:8080/realms/mini-iam/protocol/openid-connect
 for p in 8081 8082 8083; do curl -s -i -H 'X-Correlation-Id: smoke-1' localhost:$p/actuator/health | grep -iE '^HTTP|x-correlation'; done
 curl -s -i localhost:8082/api/auth/me | grep -iE '^HTTP|www-auth|content-type'        # 401 + problem+json
-TOKEN=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-admin \
+TOKEN=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-service \
+  -d "client_secret=$MINI_IAM_SERVICE_CLIENT_SECRET" $KC/token | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
+AT=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-admin \
   -d "client_secret=$MINI_IAM_ADMIN_CLIENT_SECRET" $KC/token | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
+curl -s -o /dev/null -w 'admin-api token on app API: %{http_code}\n' -H "Authorization: Bearer $AT" localhost:8082/api/auth/me  # 401
 curl -s -w ' [%{http_code}]\n' -H "Authorization: Bearer $TOKEN" localhost:8082/api/auth/me   # 200
 MT=$(curl -s -d grant_type=password -d client_id=admin-cli -d "username=$KEYCLOAK_ADMIN_USERNAME" \
   -d "password=$KEYCLOAK_ADMIN_PASSWORD" http://localhost:8080/realms/master/protocol/openid-connect/token \

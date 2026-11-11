@@ -28,18 +28,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Validates real Keycloak tokens end-to-end (spec §5.3, §11.1): signature, issuer and audience.
  * Uses the same realm import as docker compose.
  */
-@SpringBootTest(properties = "spring.security.oauth2.client.registration.keycloak-admin.client-secret=unused-in-this-test")
+@SpringBootTest(properties = {
+        "spring.security.oauth2.client.registration.keycloak-admin.client-secret=unused-in-this-test",
+        "spring.security.oauth2.client.registration.mini-iam-service.client-secret=unused-in-this-test"
+})
 @AutoConfigureMockMvc
 @Testcontainers
 class KeycloakJwtValidationIT {
 
     private static final String REALM = "mini-iam";
     private static final String ADMIN_CLIENT_SECRET = "it-client-secret";
+    private static final String SERVICE_CLIENT_SECRET = "it-service-client-secret";
 
     @Container
     static final KeycloakContainer KEYCLOAK = new KeycloakContainer("quay.io/keycloak/keycloak:26.8.2")
             .withRealmImportFile("keycloak/mini-iam-realm.json")
             .withEnv("MINI_IAM_ADMIN_CLIENT_SECRET", ADMIN_CLIENT_SECRET)
+            .withEnv("MINI_IAM_SERVICE_CLIENT_SECRET", SERVICE_CLIENT_SECRET)
             .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password");
 
     @DynamicPropertySource
@@ -60,13 +65,29 @@ class KeycloakJwtValidationIT {
 
     @Test
     void acceptsValidServiceAccountToken() throws Exception {
-        String token = clientCredentialsToken(REALM, "mini-iam-admin", ADMIN_CLIENT_SECRET);
+        String token = clientCredentialsToken(REALM, "mini-iam-service", SERVICE_CLIENT_SECRET);
 
         mockMvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("service-account-mini-iam-admin"))
+                .andExpect(jsonPath("$.username").value("service-account-mini-iam-service"))
                 // SERVICE is a technical role and never exposed as an application role
                 .andExpect(jsonPath("$.roles.length()").value(0));
+        // The service-to-service token carries SERVICE only - no Keycloak Admin API privileges.
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(payload).contains("\"SERVICE\"").doesNotContain("realm-management").doesNotContain("manage-users");
+    }
+
+    @Test
+    void adminApiTokenIsNotAcceptedByApplicationApis() throws Exception {
+        // mini-iam-admin is for Keycloak Admin API only: no mini-iam-api audience, no SERVICE role.
+        String token = clientCredentialsToken(REALM, "mini-iam-admin", ADMIN_CLIENT_SECRET);
+
+        mockMvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(payload).doesNotContain("\"SERVICE\"").doesNotContain("mini-iam-api").contains("manage-users");
     }
 
     @Test
@@ -88,7 +109,7 @@ class KeycloakJwtValidationIT {
 
     @Test
     void rejectsTokenWithTamperedSignature() throws Exception {
-        String token = clientCredentialsToken(REALM, "mini-iam-admin", ADMIN_CLIENT_SECRET);
+        String token = clientCredentialsToken(REALM, "mini-iam-service", SERVICE_CLIENT_SECRET);
         int signatureStart = token.lastIndexOf('.') + 1;
         char replacement = token.charAt(signatureStart) == 'A' ? 'B' : 'A';
         String tampered = token.substring(0, signatureStart) + replacement + token.substring(signatureStart + 1);

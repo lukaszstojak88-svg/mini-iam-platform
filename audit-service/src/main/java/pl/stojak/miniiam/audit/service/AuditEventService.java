@@ -32,6 +32,8 @@ import java.util.UUID;
 public class AuditEventService {
 
     static final Set<String> SORTABLE_PROPERTIES = Set.of("occurredAt", "eventType");
+    /** Upper limit of {@code size}; larger values are rejected with 400, never silently clamped. */
+    static final int MAX_PAGE_SIZE = 100;
     /** Limit of the serialized {@code details} object; events are small, this guards the table against abuse. */
     static final int MAX_DETAILS_BYTES = 4096;
 
@@ -62,6 +64,9 @@ public class AuditEventService {
 
     public PageResponse<AuditEventResponse> list(AuditEventType eventType, String actorUserId, String targetUserId,
                                                  Instant from, Instant to, Pageable pageable) {
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException("'size' must not exceed " + MAX_PAGE_SIZE + ".");
+        }
         for (Sort.Order order : pageable.getSort()) {
             if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
                 throw new InvalidRequestException("Unsupported sort property: " + order.getProperty());

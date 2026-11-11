@@ -54,7 +54,7 @@ class RoleServiceTest {
     }
 
     private static KeycloakUser user(String id, boolean enabled) {
-        return new KeycloakUser(id, id, enabled, null);
+        return new KeycloakUser(id, id, enabled);
     }
 
     private void targetExistsWithEffectiveRoles(KeycloakRole... roles) {
@@ -199,7 +199,7 @@ class RoleServiceTest {
 
     @Test
     void serviceAccountsAreProtected() {
-        when(keycloak.findUser(TARGET)).thenReturn(Optional.of(new KeycloakUser(TARGET, "svc", true, "mini-iam-admin")));
+        when(keycloak.findUser(TARGET)).thenReturn(Optional.of(new KeycloakUser(TARGET, "svc", true)));
         when(keycloak.getEffectiveRealmRoles(TARGET)).thenReturn(List.of(SERVICE));
 
         assertThatThrownBy(() -> service.assignRole(TARGET, "ADMIN", ACTOR))

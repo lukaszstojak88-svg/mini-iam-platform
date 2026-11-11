@@ -11,7 +11,7 @@ import pl.stojak.miniiam.user.integration.ServiceTokenConfig;
 
 /**
  * Wires the Keycloak Admin REST API client: a {@link RestClient} with timeouts that attaches the cached
- * Client Credentials token of the technical client (see {@link ServiceTokenConfig}).
+ * Client Credentials token of the technical client mini-iam-admin (see {@link ServiceTokenConfig}).
  */
 @Configuration
 @EnableConfigurationProperties(KeycloakAdminProperties.class)
@@ -23,7 +23,7 @@ public class KeycloakAdminClientConfig {
                                             OAuth2AuthorizedClientService authorizedClientService) {
         OAuth2ClientHttpRequestInterceptor tokenInterceptor =
                 new OAuth2ClientHttpRequestInterceptor(serviceAuthorizedClientManager);
-        tokenInterceptor.setClientRegistrationIdResolver(request -> ServiceTokenConfig.REGISTRATION_ID);
+        tokenInterceptor.setClientRegistrationIdResolver(request -> ServiceTokenConfig.ADMIN_REGISTRATION_ID);
         tokenInterceptor.setPrincipalResolver(request -> ServiceTokenConfig.SERVICE_PRINCIPAL);
         // Drop a cached token that Keycloak rejects (401/403), so the next call obtains a fresh one.
         tokenInterceptor.setAuthorizationFailureHandler(

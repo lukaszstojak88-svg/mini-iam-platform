@@ -115,6 +115,24 @@ class AuditEventServiceTest {
     }
 
     @Test
+    void listRejectsPageSizeAboveLimit() {
+        assertThatThrownBy(() -> service.list(null, null, null, null, null, PageRequest.of(0, 101)))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("'size' must not exceed 100.");
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listAcceptsPageSizeAtLimit() {
+        when(repository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
+
+        service.list(null, null, null, null, null, PageRequest.of(0, 100));
+
+        verify(repository).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
     void listRejectsSortOutsideWhitelist() {
         assertThatThrownBy(() -> service.list(null, null, null, null, null,
                 PageRequest.of(0, 20, Sort.by("details"))))

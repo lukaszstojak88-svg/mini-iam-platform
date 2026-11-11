@@ -530,6 +530,22 @@ class UserServiceTest {
     }
 
     @Test
+    void listRejectsPageSizeAboveLimit() {
+        assertThatThrownBy(() -> service.list(null, PageRequest.of(0, 101)))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("'size' must not exceed 100.");
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void listAcceptsPageSizeAtLimit() {
+        PageRequest stable = PageRequest.of(0, 100, Sort.by("id"));
+        when(repository.findAll(stable)).thenReturn(new PageImpl<>(List.of(), stable, 0));
+
+        assertThat(service.list(null, PageRequest.of(0, 100)).size()).isEqualTo(100);
+    }
+
+    @Test
     void listUsesEscapedSearchPattern() {
         PageRequest page = PageRequest.of(0, 20, Sort.by("username"));
         PageRequest stable = PageRequest.of(0, 20, Sort.by("username").and(Sort.by("id")));
