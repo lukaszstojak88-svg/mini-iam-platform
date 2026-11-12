@@ -24,6 +24,7 @@ import pl.stojak.miniiam.user.dto.request.CreateUserRequest;
 import pl.stojak.miniiam.user.dto.request.UpdateProfileRequest;
 import pl.stojak.miniiam.user.dto.request.UpdateStatusRequest;
 import pl.stojak.miniiam.user.dto.response.PageResponse;
+import pl.stojak.miniiam.user.dto.response.UserDetailsResponse;
 import pl.stojak.miniiam.user.dto.response.UserResponse;
 import pl.stojak.miniiam.user.service.Actor;
 import pl.stojak.miniiam.user.service.UserService;
@@ -66,8 +67,8 @@ public class UserController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
-    public UserResponse get(@PathVariable UUID id) {
-        return userService.get(id);
+    public UserDetailsResponse get(@PathVariable UUID id, JwtAuthenticationToken authentication) {
+        return userService.get(id, actor(authentication));
     }
 
     @PostMapping

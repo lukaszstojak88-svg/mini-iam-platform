@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { CreateUserRequest, PageResponse, UpdateProfileRequest, User, UserQuery } from './api-models';
+import { CreateUserRequest, PageResponse, UpdateProfileRequest, User, UserDetails, UserQuery } from './api-models';
 import { toHttpParams } from './http-params';
 
 /** user-service API (spec §6.1). */
@@ -16,8 +16,8 @@ export class UserApiService {
     return this.http.get<PageResponse<User>>(this.baseUrl, { params: toHttpParams(query) });
   }
 
-  get(id: string): Observable<User> {
-    return this.http.get<User>(`${this.baseUrl}/${encodeURIComponent(id)}`);
+  get(id: string): Observable<UserDetails> {
+    return this.http.get<UserDetails>(`${this.baseUrl}/${encodeURIComponent(id)}`);
   }
 
   getMe(): Observable<User> {

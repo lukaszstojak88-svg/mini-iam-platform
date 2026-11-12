@@ -64,7 +64,8 @@ class RoleManagementKeycloakIT {
             .withRealmImportFile("keycloak/mini-iam-realm.json")
             .withEnv("MINI_IAM_ADMIN_CLIENT_SECRET", CLIENT_SECRET)
             .withEnv("MINI_IAM_SERVICE_CLIENT_SECRET", "it-service-client-secret")
-            .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password");
+            .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password")
+            .withEnv("MINI_IAM_DEMO_PASSWORD", "it-demo-password");
 
     private static final RestClient REST = RestClient.create();
     private static String realmAdminId;

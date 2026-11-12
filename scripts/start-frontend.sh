@@ -104,4 +104,5 @@ fi
 # --- Dev server --------------------------------------------------------------
 info "Starting dev server: http://localhost:4200  (Ctrl+C to stop)"
 info "Log in as 'admin' with MINI_IAM_ADMIN_PASSWORD from .env"
+info "Test users 'manager', 'auditor', 'user': MINI_IAM_DEMO_PASSWORD from .env (changed at first login)"
 exec npm start

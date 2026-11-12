@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { vi } from 'vitest';
 
-import { PageResponse, User } from '../app/core/api/api-models';
+import { PageResponse, User, UserDetails } from '../app/core/api/api-models';
 import { AppRole } from '../app/core/auth/app-role';
 import { AuthService } from '../app/core/auth/auth.service';
 
@@ -33,6 +33,10 @@ export function user(overrides: Partial<User> = {}): User {
     updatedAt: '2026-11-10T09:00:00Z',
     ...overrides,
   };
+}
+
+export function userDetails(overrides: Partial<UserDetails> = {}): UserDetails {
+  return { ...user(), editable: true, ...overrides };
 }
 
 export function page<T>(content: T[], total = content.length): PageResponse<T> {

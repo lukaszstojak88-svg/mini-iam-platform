@@ -148,6 +148,45 @@
         { "type": "password", "value": "${MINI_IAM_ADMIN_PASSWORD}", "temporary": false }
       ],
       "realmRoles": ["default-roles-mini-iam", "ADMIN"]
+    },
+    {
+      "username": "manager",
+      "enabled": true,
+      "email": "manager@example.com",
+      "emailVerified": true,
+      "firstName": "Manager",
+      "lastName": "Mini IAM",
+      "credentials": [
+        { "type": "password", "value": "${MINI_IAM_DEMO_PASSWORD}", "temporary": true }
+      ],
+      "requiredActions": ["UPDATE_PASSWORD"],
+      "realmRoles": ["default-roles-mini-iam", "MANAGER"]
+    },
+    {
+      "username": "auditor",
+      "enabled": true,
+      "email": "auditor@example.com",
+      "emailVerified": true,
+      "firstName": "Auditor",
+      "lastName": "Mini IAM",
+      "credentials": [
+        { "type": "password", "value": "${MINI_IAM_DEMO_PASSWORD}", "temporary": true }
+      ],
+      "requiredActions": ["UPDATE_PASSWORD"],
+      "realmRoles": ["default-roles-mini-iam", "AUDITOR"]
+    },
+    {
+      "username": "user",
+      "enabled": true,
+      "email": "user@example.com",
+      "emailVerified": true,
+      "firstName": "User",
+      "lastName": "Mini IAM",
+      "credentials": [
+        { "type": "password", "value": "${MINI_IAM_DEMO_PASSWORD}", "temporary": true }
+      ],
+      "requiredActions": ["UPDATE_PASSWORD"],
+      "realmRoles": ["default-roles-mini-iam"]
     }
   ]
 }

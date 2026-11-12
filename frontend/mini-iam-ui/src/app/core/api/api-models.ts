@@ -27,6 +27,11 @@ export interface User {
   updatedAt: string;
 }
 
+/** `GET /api/users/{id}`: the profile plus whether the caller may edit it (MANAGER cannot edit ADMIN accounts). */
+export interface UserDetails extends User {
+  editable: boolean;
+}
+
 export interface CreateUserRequest {
   username: string;
   email: string;

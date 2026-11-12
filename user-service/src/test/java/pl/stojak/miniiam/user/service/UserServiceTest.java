@@ -320,7 +320,7 @@ class UserServiceTest {
     void unknownProfileGives404() {
         when(repository.findById(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.get(java.util.UUID.randomUUID())).isInstanceOf(UserNotFoundException.class);
+        assertThatThrownBy(() -> service.get(java.util.UUID.randomUUID(), ADMIN)).isInstanceOf(UserNotFoundException.class);
     }
 
     // ---------------------------------------------------------------- get: status reconciliation
@@ -331,7 +331,7 @@ class UserServiceTest {
         when(repository.findById(user.getId())).thenReturn(Optional.of(user));
         when(keycloak.findUser("kc-user")).thenReturn(Optional.of(account("kc-user", false)));
 
-        assertThat(service.get(user.getId()).enabled()).isFalse();
+        assertThat(service.get(user.getId(), ADMIN).user().enabled()).isFalse();
         verify(repository).updateEnabled(eq(user.getId()), eq(false), any());
         verify(repository, never()).save(any());
     }
@@ -342,8 +342,53 @@ class UserServiceTest {
         when(repository.findById(user.getId())).thenReturn(Optional.of(user));
         when(keycloak.findUser("kc-user")).thenThrow(new KeycloakUnavailableException("findUser", null));
 
-        assertThat(service.get(user.getId()).enabled()).isTrue();
+        assertThat(service.get(user.getId(), ADMIN).user().enabled()).isTrue();
         verify(repository, never()).save(any());
+    }
+
+    // ---------------------------------------------------------------- get: editable flag
+
+    @Test
+    void adminMayEditAnyProfileWithoutRoleLookup() {
+        UserProfile other = profile("kc-other-admin", true);
+        when(repository.findById(other.getId())).thenReturn(Optional.of(other));
+        when(keycloak.findUser("kc-other-admin")).thenReturn(Optional.of(account("kc-other-admin", true)));
+
+        assertThat(service.get(other.getId(), ADMIN).editable()).isTrue();
+        verify(keycloak, never()).getEffectiveRealmRoles(any());
+    }
+
+    @Test
+    void managerMayNotEditAdministratorProfile() {
+        UserProfile admin = profile("kc-other-admin", true);
+        when(repository.findById(admin.getId())).thenReturn(Optional.of(admin));
+        when(keycloak.findUser("kc-other-admin")).thenReturn(Optional.of(account("kc-other-admin", true)));
+        when(keycloak.getEffectiveRealmRoles("kc-other-admin")).thenReturn(List.of("ADMIN", "USER"));
+
+        assertThat(service.get(admin.getId(), MANAGER).editable()).isFalse();
+    }
+
+    @Test
+    void managerMayEditRegularProfile() {
+        UserProfile user = profile("kc-user", true);
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(keycloak.findUser("kc-user")).thenReturn(Optional.of(account("kc-user", true)));
+        when(keycloak.getEffectiveRealmRoles("kc-user")).thenReturn(List.of("USER"));
+
+        assertThat(service.get(user.getId(), MANAGER).editable()).isTrue();
+    }
+
+    @Test
+    void managerGetsNotEditableWhenRolesCannotBeChecked() {
+        UserProfile user = profile("kc-user", true);
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(keycloak.findUser("kc-user")).thenReturn(Optional.of(account("kc-user", true)));
+        when(keycloak.getEffectiveRealmRoles("kc-user"))
+                .thenThrow(new KeycloakUnavailableException("getEffectiveRealmRoles", null));
+
+        var details = service.get(user.getId(), MANAGER);
+        assertThat(details.editable()).isFalse();
+        assertThat(details.user().username()).isEqualTo("john.doe");
     }
 
     // ---------------------------------------------------------------- own profile (JIT)

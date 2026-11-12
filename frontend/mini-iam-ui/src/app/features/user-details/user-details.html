@@ -4,10 +4,12 @@
       <mat-icon>arrow_back</mat-icon>
       Back to users
     </a>
-    <a mat-stroked-button [routerLink]="['/users', u.id, 'edit']" data-testid="edit">
-      <mat-icon>edit</mat-icon>
-      Edit
-    </a>
+    @if (u.editable) {
+      <a mat-stroked-button [routerLink]="['/users', u.id, 'edit']" data-testid="edit">
+        <mat-icon>edit</mat-icon>
+        Edit
+      </a>
+    }
     @if (isAdmin && !isSelf(u)) {
       <button mat-stroked-button type="button" (click)="toggleStatus(u)" [disabled]="busy()" data-testid="toggle-status">
         <mat-icon>{{ u.enabled ? 'block' : 'check_circle' }}</mat-icon>

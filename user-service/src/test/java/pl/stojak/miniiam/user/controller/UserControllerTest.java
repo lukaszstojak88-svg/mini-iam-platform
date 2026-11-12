@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import pl.stojak.miniiam.user.config.CorrelationIdFilter;
 import pl.stojak.miniiam.user.dto.response.PageResponse;
+import pl.stojak.miniiam.user.dto.response.UserDetailsResponse;
 import pl.stojak.miniiam.user.dto.response.UserResponse;
 import pl.stojak.miniiam.user.exception.BusinessRuleViolationException;
 import pl.stojak.miniiam.user.exception.ErrorCode;
@@ -126,7 +127,7 @@ class UserControllerTest {
 
     private void stubServiceResponses() {
         when(userService.list(any(), any())).thenReturn(new PageResponse<>(List.of(user()), 0, 20, 1, 1));
-        when(userService.get(any())).thenReturn(user());
+        when(userService.get(any(), any())).thenReturn(new UserDetailsResponse(user(), true));
         when(userService.create(any(), any())).thenReturn(user());
         when(userService.update(any(), any(), any())).thenReturn(user());
         when(userService.updateStatus(any(), eq(false), any())).thenReturn(user());
@@ -219,8 +220,21 @@ class UserControllerTest {
     }
 
     @Test
+    void detailsAreFlatWithEditableFlagForTheCaller() throws Exception {
+        when(userService.get(eq(ID), any())).thenReturn(new UserDetailsResponse(user(), false));
+
+        mockMvc.perform(get("/api/users/" + ID).with(as("MANAGER", "USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ID.toString()))
+                .andExpect(jsonPath("$.username").value("john.doe"))
+                .andExpect(jsonPath("$.editable").value(false))
+                .andExpect(jsonPath("$.user").doesNotExist());
+        verify(userService).get(eq(ID), eq(new Actor("kc-caller", "caller", java.util.Set.of("MANAGER", "USER"))));
+    }
+
+    @Test
     void domainErrorsAreMappedToProblemDetails() throws Exception {
-        when(userService.get(ID)).thenThrow(new UserNotFoundException("missing"));
+        when(userService.get(eq(ID), any())).thenThrow(new UserNotFoundException("missing"));
         mockMvc.perform(get("/api/users/" + ID).with(as("ADMIN")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));

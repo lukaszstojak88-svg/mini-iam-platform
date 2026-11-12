@@ -56,6 +56,8 @@ export class UserForm implements OnInit {
   protected readonly loadError = signal('');
   protected readonly saving = signal(false);
   protected readonly formError = signal<ApiError | null>(null);
+  /** Set when the backend reports the profile as not editable for the caller (MANAGER and an ADMIN account). */
+  protected readonly notEditable = signal(false);
   protected readonly hidePassword = signal(true);
 
   protected readonly form = this.fb.group(
@@ -87,6 +89,7 @@ export class UserForm implements OnInit {
     this.status.set('loading');
     this.userApi.get(this.id()!).subscribe({
       next: (user) => {
+        this.notEditable.set(!user.editable);
         this.form.patchValue({
           username: user.username,
           email: user.email,

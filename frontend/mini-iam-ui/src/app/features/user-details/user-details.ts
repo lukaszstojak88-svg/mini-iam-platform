@@ -6,7 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { Router, RouterLink } from '@angular/router';
 import { filter, switchMap } from 'rxjs';
 
-import { User, UserRoles } from '../../core/api/api-models';
+import { User, UserDetails as UserProfileDetails, UserRoles } from '../../core/api/api-models';
 import { RoleApiService } from '../../core/api/role-api.service';
 import { UserApiService } from '../../core/api/user-api.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -18,7 +18,8 @@ import { PageHeader } from '../../shared/page-header';
 import { StatusPill } from '../../shared/status-pill';
 
 /**
- * Profile of one user. ADMIN and MANAGER can open it and edit the profile; only ADMIN sees the roles and can
+ * Profile of one user. ADMIN and MANAGER can open it and edit the profile (Edit is hidden when the backend reports
+ * the profile as not editable, i.e. a MANAGER viewing an ADMIN account); only ADMIN sees the roles and can
  * activate, deactivate or delete the account (always after confirmation). Roles are read from auth-service by
  * the `keycloakId`, not the local profile id.
  */
@@ -42,7 +43,7 @@ export class UserDetails implements OnInit {
 
   protected readonly status = signal<LoadStatus>('loading');
   protected readonly errorMessage = signal('');
-  protected readonly user = signal<User | null>(null);
+  protected readonly user = signal<UserProfileDetails | null>(null);
   protected readonly roles = signal<UserRoles | null>(null);
   protected readonly rolesError = signal('');
   protected readonly busy = signal(false);
@@ -77,7 +78,7 @@ export class UserDetails implements OnInit {
     return [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
   }
 
-  protected toggleStatus(user: User): void {
+  protected toggleStatus(user: UserProfileDetails): void {
     const enable = !user.enabled;
     this.confirm
       .confirm({
@@ -98,7 +99,8 @@ export class UserDetails implements OnInit {
       .subscribe({
         next: (updated) => {
           this.busy.set(false);
-          this.user.set(updated);
+          // PATCH returns the plain profile; editability does not change with the status.
+          this.user.set({ ...updated, editable: user.editable });
           this.notify.success(enable ? 'Account activated.' : 'Account deactivated.');
         },
         error: (error: unknown) => this.fail(error),

@@ -3,7 +3,12 @@
 
 <app-load-state [status]="status()" [message]="loadError()" (retry)="load()" />
 
-@if (status() === 'loaded') {
+@if (status() === 'loaded' && notEditable()) {
+  <section class="card card-section form-card">
+    <p class="form-error" role="alert" data-testid="not-editable">Managers cannot modify administrator accounts.</p>
+    <a mat-stroked-button [routerLink]="['/users', id()]">Back to user</a>
+  </section>
+} @else if (status() === 'loaded') {
   <section class="card card-section form-card">
     @if (formError(); as error) {
       <p class="form-error" role="alert" data-testid="form-error">{{ error.message }}</p>

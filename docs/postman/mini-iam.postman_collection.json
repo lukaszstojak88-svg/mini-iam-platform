@@ -458,7 +458,7 @@
                 "{{userId}}"
               ]
             },
-            "description": "ADMIN, MANAGER. Status `enabled` wyrównywany z Keycloak."
+            "description": "ADMIN, MANAGER. Status `enabled` wyrównywany z Keycloak. Pole `editable` mówi, czy wywołujący może edytować profil (MANAGER na koncie ADMIN → false)."
           },
           "event": [
             {

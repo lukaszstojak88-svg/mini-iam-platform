@@ -45,7 +45,8 @@ class KeycloakJwtValidationIT {
             .withRealmImportFile("keycloak/mini-iam-realm.json")
             .withEnv("MINI_IAM_ADMIN_CLIENT_SECRET", ADMIN_CLIENT_SECRET)
             .withEnv("MINI_IAM_SERVICE_CLIENT_SECRET", SERVICE_CLIENT_SECRET)
-            .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password");
+            .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password")
+            .withEnv("MINI_IAM_DEMO_PASSWORD", "it-demo-password");
 
     @DynamicPropertySource
     static void keycloakProperties(DynamicPropertyRegistry registry) {

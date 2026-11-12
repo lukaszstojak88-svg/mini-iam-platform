@@ -110,7 +110,10 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Try 
   Stan listy (strona, filtr) w query params, żeby odświeżenie strony go zachowało.
 - **User Details** — dane profilu, status, role (z auth-service po `keycloakId` — nie mylić z lokalnym `id`).
   Akcje ADMIN: aktywuj/dezaktywuj, usuń — zawsze z dialogiem potwierdzenia; **na własnym koncie ukryte** (z notką),
-  backend i tak odrzuca je kodem 403 `SELF_ACCOUNT_PROTECTED`. Akcja „Edytuj” (ADMIN, MANAGER).
+  backend i tak odrzuca je kodem 403 `SELF_ACCOUNT_PROTECTED`. Akcja „Edytuj” (ADMIN, MANAGER) — widoczna tylko gdy
+  `GET /api/users/{id}` zwraca `editable: true`; MANAGER na koncie ADMIN-a jej nie widzi, a wejście wprost na
+  `/users/:id/edit` pokazuje komunikat zamiast formularza (UI nie zna ról innych osób — MANAGER nie ma dostępu do
+  `GET /api/users/{keycloakId}/roles`).
 - **Create / Edit User** — Reactive Forms; walidacja zgodna z backendem: `username` wymagany, 3–100 znaków
   `[A-Za-z0-9._-]` (backend zapisuje małymi literami); `email` wymagany, format e-mail, ≤ 255; `firstName`,
   `lastName` **wymagane** (niepuste), ≤ 100 — także przy edycji i w edycji własnego profilu na Dashboardzie. Tylko przy tworzeniu: **hasło tymczasowe** (wymagane, 8–128 znaków,

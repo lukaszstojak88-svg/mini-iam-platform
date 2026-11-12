@@ -4,7 +4,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
-import { byTestId, notifyStub, problem, user } from '../../../testing/test-helpers';
+import { byTestId, notifyStub, problem, user, userDetails } from '../../../testing/test-helpers';
 import { UserApiService } from '../../core/api/user-api.service';
 import { NotifyService } from '../../shared/notify.service';
 import { UserForm } from './user-form';
@@ -137,7 +137,7 @@ describe('UserForm', () => {
 
   it('edits a user without password fields and with a read-only username', async () => {
     const update = vi.fn(() => of(user({ email: 'new@example.com' })));
-    const { root } = await render('/users/id-1/edit', { get: vi.fn(() => of(user())), update });
+    const { root } = await render('/users/id-1/edit', { get: vi.fn(() => of(userDetails())), update });
 
     expect(byTestId(root, 'password')).toBeNull();
     expect(root.querySelector<HTMLInputElement>('input[formcontrolname="username"]')!.disabled).toBe(true);
@@ -150,11 +150,23 @@ describe('UserForm', () => {
 
   it('explains when a manager tries to edit an administrator', async () => {
     const update = vi.fn(() => throwError(() => problem(403, 'ADMIN_ACCOUNT_PROTECTED')));
-    const { harness, root } = await render('/users/id-1/edit', { get: vi.fn(() => of(user())), update });
+    const { harness, root } = await render('/users/id-1/edit', { get: vi.fn(() => of(userDetails())), update });
 
     submit(root);
     harness.detectChanges();
 
     expect(byTestId(root, 'form-error')?.textContent).toContain('Managers cannot modify administrator accounts.');
+  });
+
+  it('shows no form when the profile is not editable for the caller', async () => {
+    const update = vi.fn();
+    const { root } = await render('/users/id-1/edit', {
+      get: vi.fn(() => of(userDetails({ editable: false }))),
+      update,
+    });
+
+    expect(byTestId(root, 'not-editable')?.textContent).toContain('Managers cannot modify administrator accounts.');
+    expect(root.querySelector('form')).toBeNull();
+    expect(update).not.toHaveBeenCalled();
   });
 });

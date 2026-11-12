@@ -493,7 +493,10 @@ Przyjęte zachowanie (Etap 3):
 -   zmiana e-maila ustawia `emailVerified=false` w Keycloak;
 -   `MANAGER` nie może edytować kont z rolą `ADMIN` (403
     `ADMIN_ACCOUNT_PROTECTED`) --- zmiana e-maila administratora byłaby
-    ścieżką przejęcia konta;
+    ścieżką przejęcia konta; `GET /api/users/{id}` zwraca dodatkowo
+    `editable` (czy wywołujący może zmienić profil przez `PUT`), żeby UI
+    nie pokazywał edycji, która zostanie odrzucona (gdy Keycloak jest
+    niedostępny, manager dostaje `false`);
 -   błędy zawierają właściwość `code` (np. `USER_NOT_FOUND`,
     `USERNAME_OR_EMAIL_TAKEN`, `LAST_ADMIN`, `VALIDATION_FAILED` z listą
     `errors`, `KEYCLOAK_UNAVAILABLE`), używaną przez UI do komunikatów;

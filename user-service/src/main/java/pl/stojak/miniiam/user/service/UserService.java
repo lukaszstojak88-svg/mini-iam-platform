@@ -12,6 +12,7 @@ import pl.stojak.miniiam.user.domain.UserProfile;
 import pl.stojak.miniiam.user.dto.request.CreateUserRequest;
 import pl.stojak.miniiam.user.dto.request.UpdateProfileRequest;
 import pl.stojak.miniiam.user.dto.response.PageResponse;
+import pl.stojak.miniiam.user.dto.response.UserDetailsResponse;
 import pl.stojak.miniiam.user.dto.response.UserResponse;
 import pl.stojak.miniiam.user.exception.BusinessRuleViolationException;
 import pl.stojak.miniiam.user.exception.ErrorCode;
@@ -104,7 +105,7 @@ public class UserService {
      * Returns a profile and reconciles its status with Keycloak, the source of truth for {@code enabled}
      * (spec §6.1). If Keycloak cannot be asked, the local data is returned and the problem is logged.
      */
-    public UserResponse get(UUID id) {
+    public UserDetailsResponse get(UUID id, Actor actor) {
         UserProfile profile = findProfile(id);
         try {
             Optional<KeycloakUser> account = keycloak.findUser(profile.getKeycloakId());
@@ -121,7 +122,20 @@ public class UserService {
         } catch (KeycloakIntegrationException e) {
             log.warn("Could not verify status of profile {} in Keycloak; returning local data", profile.getId());
         }
-        return UserMapper.toResponse(profile);
+        return new UserDetailsResponse(UserMapper.toResponse(profile), mayEdit(actor, profile.getKeycloakId()));
+    }
+
+    /**
+     * Whether {@code update} would accept the actor's change of this profile. When Keycloak cannot be asked, a
+     * manager gets {@code false} (fail closed; saving needs Keycloak anyway).
+     */
+    private boolean mayEdit(Actor actor, String keycloakId) {
+        try {
+            return !managerTargetsAdmin(actor, keycloakId);
+        } catch (KeycloakIntegrationException e) {
+            log.warn("Could not check the roles of {} in Keycloak; profile reported as not editable", keycloakId);
+            return false;
+        }
     }
 
     /**
@@ -163,7 +177,7 @@ public class UserService {
 
     public UserResponse update(UUID id, UpdateProfileRequest request, Actor actor) {
         UserProfile profile = findProfile(id);
-        if (actor.hasRole(MANAGER_ROLE) && !actor.hasRole(ADMIN_ROLE) && isAdmin(profile.getKeycloakId())) {
+        if (managerTargetsAdmin(actor, profile.getKeycloakId())) {
             // Hardening: a manager changing an admin's e-mail would be a path to taking over that account.
             throw new OperationForbiddenException(ErrorCode.ADMIN_ACCOUNT_PROTECTED,
                     "Managers cannot modify administrator accounts");
@@ -308,6 +322,11 @@ public class UserService {
             throw new BusinessRuleViolationException(ErrorCode.LAST_ADMIN,
                     "The last active administrator cannot be deactivated or deleted");
         }
+    }
+
+    /** A manager (without ADMIN) may not modify administrator accounts. */
+    private boolean managerTargetsAdmin(Actor actor, String keycloakId) {
+        return actor.hasRole(MANAGER_ROLE) && !actor.hasRole(ADMIN_ROLE) && isAdmin(keycloakId);
     }
 
     private boolean isAdmin(String keycloakId) {

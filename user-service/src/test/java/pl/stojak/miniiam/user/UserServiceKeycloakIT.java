@@ -66,7 +66,8 @@ class UserServiceKeycloakIT {
             .withRealmImportFile("keycloak/mini-iam-realm.json")
             .withEnv("MINI_IAM_ADMIN_CLIENT_SECRET", CLIENT_SECRET)
             .withEnv("MINI_IAM_SERVICE_CLIENT_SECRET", "it-service-client-secret")
-            .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password");
+            .withEnv("MINI_IAM_ADMIN_PASSWORD", "it-admin-password")
+            .withEnv("MINI_IAM_DEMO_PASSWORD", "it-demo-password");
 
     @DynamicPropertySource
     static void keycloakProperties(DynamicPropertyRegistry registry) {
@@ -198,6 +199,13 @@ class UserServiceKeycloakIT {
         String me = mockMvc.perform(get("/api/users/me").with(as(adminKeycloakId, "ADMIN", "USER")))
                 .andReturn().getResponse().getContentAsString();
         String adminProfileId = objectMapper.readTree(me).get("id").asText();
+
+        // The details tell the UI up front that the manager cannot edit this profile.
+        mockMvc.perform(get("/api/users/" + adminProfileId).with(as("kc-it-manager", "MANAGER", "USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.editable").value(false));
+        mockMvc.perform(get("/api/users/" + adminProfileId).with(admin()))
+                .andExpect(jsonPath("$.editable").value(true));
 
         mockMvc.perform(put("/api/users/" + adminProfileId).with(as("kc-it-manager", "MANAGER", "USER"))
                         .contentType(MediaType.APPLICATION_JSON).content("""

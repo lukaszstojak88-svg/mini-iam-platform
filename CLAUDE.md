@@ -23,8 +23,8 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-**Etap 6 — Angular UI** — zrealizowany, oczekuje akceptacji użytkownika (Etapy 1–5 zaakceptowane).
-Następny: Etap 7 — Dokumentacja i jakość (nie zaczynać bez decyzji użytkownika).
+Etapy 1–6 zrealizowane i zaakceptowane.
+Następny: **Etap 7 — Dokumentacja i jakość** (nie zaczynać bez decyzji użytkownika).
 
 ## Komendy
 
@@ -62,7 +62,9 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   tracking ID), propagowany przez Feign i zapisywany w audycie (spec §16).
 - Wersje: Spring Boot 3.5.x (+ Spring Cloud 2025.0.x), Java 21, Keycloak 26.8, PostgreSQL 17, Elastic 9.5.
 - Filtr `X-Correlation-Id` kopiowany osobno do każdego serwisu (brak modułu współdzielonego).
-- Konto `admin` (ADMIN) tworzone przez realm import, hasło z `.env` (`MINI_IAM_ADMIN_PASSWORD`).
+- Konto `admin` (ADMIN) tworzone przez realm import, hasło z `.env` (`MINI_IAM_ADMIN_PASSWORD`). Konta testowe
+  `manager` (MANAGER), `auditor` (AUDITOR), `user` (USER) też z realm importu, hasło tymczasowe
+  `MINI_IAM_DEMO_PASSWORD` (zmiana przy pierwszym logowaniu).
 - Klient `mini-iam-admin` ma scope `kc-admin-api` (wymóg Admin API Keycloak ≥ 26.8.2) i `fullScopeAllowed=false`.
 - JWT: `issuer-uri` (walidacja `iss` = `http://localhost:8080/realms/mini-iam`) + `jwk-set-uri` (w Dockerze
   `http://keycloak:8080/...`) + `audiences: mini-iam-api`. Pakiet `security` (converter ról, `SecurityConfig`,
@@ -77,7 +79,8 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
 - `firstName` i `lastName` wymagane (`@NotBlank`) przy tworzeniu i każdej edycji profilu (także `PUT /me`);
   kolumny w bazie zostają nullable (profile just-in-time z Keycloak mogą nie mieć imienia).
 - Tworzenie konta z `temporaryPassword` (tylko do Keycloak, `temporary=true`); profil just-in-time przy
-  `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN; nikt nie dezaktywuje ani
+  `GET /api/users/me`; `PUT /api/users/me` zmienia e-mail, imię, nazwisko; MANAGER nie edytuje kont ADMIN (`GET /{id}` zwraca
+  `editable` dla wywołującego — UI ukrywa edycję); nikt nie dezaktywuje ani
   nie usuwa własnego konta (403 `SELF_ACCOUNT_PROTECTED`, UI ukrywa te akcje).
 - Błędy user-service: ProblemDetail + `code` (`ErrorCode`); lista: sort tylko po whitelist, `size` > 100 → 400 `INVALID_REQUEST` (bez cichego przycinania;
   `max-page-size` wyłączone, limit `MAX_PAGE_SIZE` w serwisie — tak samo w audit-service).

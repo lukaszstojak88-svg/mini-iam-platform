@@ -131,6 +131,17 @@ Realm import (`infrastructure/keycloak/realm-import/mini-iam-realm.json`) tworzy
 z rolami `ADMIN` i `USER`. Hasło pochodzi z `MINI_IAM_ADMIN_PASSWORD` w `.env` (placeholder rozwiązywany
 przez Keycloak przy imporcie).
 
+Konta testowe do logowania na każdą rolę (też z realm importu):
+
+| Login | Role | Hasło |
+|---|---|---|
+| `manager` | `MANAGER`, `USER` | `MINI_IAM_DEMO_PASSWORD` z `.env`, tymczasowe — Keycloak wymusza zmianę przy pierwszym logowaniu |
+| `auditor` | `AUDITOR`, `USER` | jw. |
+| `user` | `USER` | jw. |
+
+Profil w user-service powstaje przy pierwszym logowaniu (just-in-time). To konta deweloperskie — nie do
+środowisk innych niż lokalne.
+
 Realm jest importowany **tylko przy pierwszym starcie** (gdy nie istnieje w bazie Keycloak). Zmiana pliku
 realmu lub haseł w `.env` wymaga czystego startu: `docker compose down -v`.
 
@@ -186,7 +197,7 @@ API `http://localhost:8081/api/users` (spec §6.1). Uprawnienia wg macierzy spec
 | Endpoint | Role |
 |---|---|
 | `GET /api/users?page&size&sort&search` | ADMIN, MANAGER |
-| `GET /api/users/{id}` | ADMIN, MANAGER |
+| `GET /api/users/{id}` | ADMIN, MANAGER (odpowiedź zawiera `editable` — czy wywołujący może edytować profil) |
 | `POST /api/users` | ADMIN, MANAGER |
 | `PUT /api/users/{id}` | ADMIN, MANAGER (MANAGER nie edytuje kont z rolą ADMIN) |
 | `PATCH /api/users/{id}/status` | ADMIN |

@@ -4,7 +4,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
-import { authAs, byTestId, notifyStub, problem, user } from '../../../testing/test-helpers';
+import { authAs, byTestId, notifyStub, problem, user, userDetails } from '../../../testing/test-helpers';
 import { RoleApiService } from '../../core/api/role-api.service';
 import { UserApiService } from '../../core/api/user-api.service';
 import { AppRole } from '../../core/auth/app-role';
@@ -20,7 +20,7 @@ async function render(roles: AppRole[], userApi: Partial<UserApiService> = {}, c
   TestBed.configureTestingModule({
     providers: [
       provideRouter([{ path: 'users/:id', component: UserDetails }, { path: 'users', children: [] }], withComponentInputBinding()),
-      { provide: UserApiService, useValue: { get: vi.fn(() => of(user())), ...userApi } },
+      { provide: UserApiService, useValue: { get: vi.fn(() => of(userDetails())), ...userApi } },
       { provide: RoleApiService, useValue: roleApi },
       { provide: AuthService, useValue: authAs(roles, me) },
       { provide: ConfirmService, useValue: confirm },
@@ -51,6 +51,13 @@ describe('UserDetails', () => {
     expect(byTestId(root, 'delete')).toBeNull();
     expect(byTestId(root, 'roles')).toBeNull();
     expect(roleApi.getUserRoles).not.toHaveBeenCalled();
+  });
+
+  it('hides Edit when the backend reports the profile as not editable (MANAGER viewing an ADMIN)', async () => {
+    const { root } = await render(['MANAGER', 'USER'], { get: vi.fn(() => of(userDetails({ editable: false }))) });
+
+    expect(byTestId(root, 'details')).not.toBeNull();
+    expect(byTestId(root, 'edit')).toBeNull();
   });
 
   it('deactivates after confirmation', async () => {
