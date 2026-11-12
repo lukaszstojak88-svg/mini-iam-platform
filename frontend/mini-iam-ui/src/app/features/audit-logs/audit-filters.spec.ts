@@ -2,39 +2,62 @@ import { convertToParamMap } from '@angular/router';
 import { describe, expect, it } from 'vitest';
 
 import { AuditEvent } from '../../core/api/api-models';
-import { actorName, readFilters, shortId, targetName, toApiRange, toDay } from './audit-filters';
+import {
+  actorName,
+  fromLocalDateTime,
+  readFilters,
+  shortId,
+  targetName,
+  toApiRange,
+  toLocalDateTime,
+} from './audit-filters';
 
 describe('audit filters', () => {
   it('reads valid filters from query params and ignores invalid ones', () => {
     const filters = readFilters(
-      convertToParamMap({ eventType: 'USER_DELETED', actor: 'kc-1', from: '2026-11-01', to: 'yesterday' }),
+      convertToParamMap({ eventType: 'USER_DELETED', actor: 'kc-1', from: '2026-11-01T08:30:15', to: 'yesterday' }),
     );
 
     expect(filters).toEqual({
       eventType: 'USER_DELETED',
       actorUserId: 'kc-1',
       targetUserId: '',
-      fromDay: '2026-11-01',
-      toDay: null,
+      from: '2026-11-01T08:30:15',
+      to: null,
     });
     expect(readFilters(convertToParamMap({ eventType: 'PASSWORD_CHANGED' })).eventType).toBeNull();
+    expect(readFilters(convertToParamMap({ from: '2026-02-31T00:00:00' })).from).toBeNull();
   });
 
-  it('turns inclusive local days into an API range [from, to) in UTC', () => {
-    const range = toApiRange({ eventType: null, actorUserId: '', targetUserId: '', fromDay: '2026-11-01', toDay: '2026-11-03' });
+  it('expands plain days from older links to the whole day', () => {
+    const filters = readFilters(convertToParamMap({ from: '2026-11-01', to: '2026-11-03' }));
 
-    // Local midnight of the first day and of the day AFTER the last one, whatever the time zone.
-    expect(range.from).toBe(new Date(2026, 10, 1).toISOString());
-    expect(range.to).toBe(new Date(2026, 10, 4).toISOString());
-    expect(toApiRange({ eventType: null, actorUserId: '', targetUserId: '', fromDay: null, toDay: null })).toEqual({
+    expect(filters.from).toBe('2026-11-01T00:00:00');
+    expect(filters.to).toBe('2026-11-03T23:59:59');
+  });
+
+  it('turns an inclusive local range into an API range [from, to + 1 s) in UTC', () => {
+    const range = toApiRange({
+      eventType: null,
+      actorUserId: '',
+      targetUserId: '',
+      from: '2026-11-01T08:30:00',
+      to: '2026-11-03T23:59:59',
+    });
+
+    expect(range.from).toBe(new Date(2026, 10, 1, 8, 30, 0).toISOString());
+    expect(range.to).toBe(new Date(2026, 10, 4, 0, 0, 0).toISOString());
+    expect(toApiRange({ eventType: null, actorUserId: '', targetUserId: '', from: null, to: null })).toEqual({
       from: undefined,
       to: undefined,
     });
   });
 
-  it('formats days and shortens ids', () => {
-    expect(toDay(new Date(2026, 0, 5))).toBe('2026-01-05');
-    expect(toDay(null)).toBeNull();
+  it('converts local date-times to and from the URL form, and shortens ids', () => {
+    expect(toLocalDateTime(new Date(2026, 0, 5, 7, 4, 9))).toBe('2026-01-05T07:04:09');
+    expect(toLocalDateTime(null)).toBeNull();
+    expect(fromLocalDateTime('2026-01-05T07:04:09')).toEqual(new Date(2026, 0, 5, 7, 4, 9));
+    expect(fromLocalDateTime('2026-01-05T25:00:00')).toBeNull();
     expect(shortId('39297f43-ea55-4976-83aa-68bf1c1cb408')).toBe('39297f43…');
     expect(shortId(null)).toBe('—');
   });

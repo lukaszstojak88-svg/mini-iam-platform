@@ -67,7 +67,9 @@ export class Roles implements OnInit {
   protected readonly roles = signal<Role[]>([]);
   /** Roles the API marks as assignable (ADMIN, MANAGER, AUDITOR); USER is the base role. */
   private readonly assignableRoles = computed(() => this.roles().filter((role) => role.assignable).map((role) => role.name));
+  /** Size of the role catalog that can be assigned via the API - not related to the selected user. */
   protected readonly assignableCount = computed(() => this.assignableRoles().length);
+  protected readonly assignableNames = computed(() => this.assignableRoles().join(', '));
 
   protected readonly userSearch = new FormControl<string | User>('', { nonNullable: true });
   protected readonly suggestions = signal<User[]>([]);

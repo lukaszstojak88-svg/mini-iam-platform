@@ -1,10 +1,8 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { provideNativeDateAdapter } from '@angular/material/core';
-import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -25,7 +23,26 @@ import { LoadState, LoadStatus } from '../../shared/load-state';
 import { PageHeader } from '../../shared/page-header';
 import { StatusPill } from '../../shared/status-pill';
 import { AuditEventDialog } from './audit-event-dialog';
-import { actorName, AuditFilters, fromDay, readFilters, shortId, targetName, toApiRange, toDay } from './audit-filters';
+import {
+  actorName,
+  AuditFilters,
+  fromLocalDateTime,
+  readFilters,
+  shortId,
+  targetName,
+  toApiRange,
+  toLocalDateTime,
+} from './audit-filters';
+import { DATE_TIME_PIPE_FORMAT } from '../../shared/date-time-adapter';
+import { DateTimeField } from '../../shared/date-time-field';
+
+/** `from` must not be later than `to` (both inclusive, to the second). */
+function rangeOrder(group: AbstractControl): ValidationErrors | null {
+  const from = group.get('from')?.value as Date | null;
+  const to = group.get('to')?.value as Date | null;
+  const valid = (d: Date | null): d is Date => !!d && !isNaN(d.getTime());
+  return valid(from) && valid(to) && from.getTime() > to.getTime() ? { rangeOrder: true } : null;
+}
 
 const SORT_FIELDS = ['occurredAt', 'eventType'] as const;
 const DEFAULT_SORT: SortState = { active: 'occurredAt', direction: 'desc' };
@@ -42,7 +59,7 @@ const DEFAULT_SORT: SortState = { active: 'occurredAt', direction: 'desc' };
     DatePipe,
     ReactiveFormsModule,
     MatButtonModule,
-    MatDatepickerModule,
+    DateTimeField,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
@@ -55,7 +72,6 @@ const DEFAULT_SORT: SortState = { active: 'occurredAt', direction: 'desc' };
     PageHeader,
     StatusPill,
   ],
-  providers: [provideNativeDateAdapter()],
   templateUrl: './audit-logs.html',
   styleUrl: './audit-logs.scss',
 })
@@ -81,13 +97,19 @@ export class AuditLogs {
   protected readonly sort = signal<SortState>(DEFAULT_SORT);
   private readonly reload$ = new BehaviorSubject<void>(undefined);
 
-  protected readonly filters = new FormGroup({
-    eventType: new FormControl<AuditEventType | null>(null),
-    actorUserId: new FormControl('', { nonNullable: true }),
-    targetUserId: new FormControl('', { nonNullable: true }),
-    from: new FormControl<Date | null>(null),
-    to: new FormControl<Date | null>(null),
-  });
+  protected readonly dateTimeFormat = DATE_TIME_PIPE_FORMAT;
+
+  protected readonly filters = new FormGroup(
+    {
+      eventType: new FormControl<AuditEventType | null>(null),
+      actorUserId: new FormControl('', { nonNullable: true }),
+      targetUserId: new FormControl('', { nonNullable: true }),
+      from: new FormControl<Date | null>(null),
+      to: new FormControl<Date | null>(null),
+    },
+    { validators: rangeOrder },
+  );
+
 
   constructor() {
     combineLatest([this.route.queryParamMap, this.reload$])
@@ -149,8 +171,8 @@ export class AuditLogs {
       eventType: value.eventType,
       actor: value.actorUserId.trim() || null,
       target: value.targetUserId.trim() || null,
-      from: toDay(value.from),
-      to: toDay(value.to),
+      from: toLocalDateTime(value.from),
+      to: toLocalDateTime(value.to),
       page: null,
     });
   }
@@ -188,8 +210,8 @@ export class AuditLogs {
         eventType: filters.eventType,
         actorUserId: filters.actorUserId,
         targetUserId: filters.targetUserId,
-        from: fromDay(filters.fromDay),
-        to: fromDay(filters.toDay),
+        from: fromLocalDateTime(filters.from),
+        to: fromLocalDateTime(filters.to),
       },
       { emitEvent: false },
     );

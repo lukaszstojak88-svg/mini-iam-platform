@@ -136,9 +136,11 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Try 
   - zmiana ról innej osoby nie zmienia tokena zalogowanego ADMIN-a; użytkownik zobaczy nowe role po odświeżeniu
     swojego tokena (do 5 min) — UI może to zaznaczyć w komunikacie sukcesu;
   - konta serwisowe nie są użytkownikami aplikacji — 403 `SERVICE_ACCOUNT_PROTECTED` pokazujemy jako komunikat.
-- **Audit Logs** — tabela tylko do odczytu: czas (lokalna strefa przeglądarki, dane w UTC), typ zdarzenia,
+- **Audit Logs** — tabela tylko do odczytu: czas (`dd.MM.yyyy HH:mm:ss`, 24h, lokalna strefa przeglądarki, dane
+  w UTC; ten sam format w dialogu szczegółów), typ zdarzenia,
   aktor, użytkownik docelowy, szczegóły (rozwijane / dialog z `details` i `correlationId`). Filtry: typ zdarzenia,
-  aktor, użytkownik docelowy, zakres dat (niepoprawna data blokuje filtrowanie z komunikatem); paginacja serwerowa;
+  aktor, użytkownik docelowy, zakres dat i godzin From/To (niepoprawna data lub From > To blokuje filtrowanie
+  z komunikatem); paginacja serwerowa;
   strona poza zakresem (stary link) → ostatnia istniejąca strona. Brak edycji i usuwania.
   Kontrakt audit-service (Etap 5):
   - `GET /api/audit-events?eventType&actorUserId&targetUserId&from&to&page&size&sort` (ADMIN, AUDITOR) →
@@ -155,9 +157,17 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Try 
     bez nazw: cel z `details.username` (`USER_CREATED`, `USER_DELETED`), a w pozostałych przypadkach skrócony
     `keycloakId` (8 znaków). Przy zdarzeniu jest też `details.roleName`. UI **nie** pobiera nazw z user-service,
     bo AUDITOR nie ma dostępu do `GET /api/users`; filtry aktora i celu nadal działają po `keycloakId`;
-  - zakres dat w UI to dni kalendarzowe w strefie przeglądarki, oba włącznie; wysyłane jako `from` = początek
-    pierwszego dnia i `to` = początek dnia po ostatnim (UTC, `to` wyłącznie). W URL: `from`/`to` jako `YYYY-MM-DD`,
-    `actor`, `target`, `eventType`.
+  - zakres w UI to data + godzina z dokładnością do sekundy, oba końce włącznie, w strefie przeglądarki. From i To
+    to po jednym polu `app-date-time-field` (`shared/date-time-field.ts`, `ControlValueAccessor` na
+    `FormControl<Date | null>`): tekst `dd.MM.yyyy HH:mm:ss` wpisywany z ręki (sekundy i godzina opcjonalne) albo
+    popup z kalendarzem Material, polem czasu (wpisywanie z sekundami albo ikona zegara z listą godzin co 30 min —
+    `mat-timepicker`) i Apply/Cancel (CDK overlay). Sam dzień: From = 00:00:00,
+    To = 23:59:59 (`defaultTime`); nieparsowalny tekst → błąd `dateTime` i zablokowane Apply. Formaty daje własny
+    `DateTimeAdapter` (`shared/date-time-adapter.ts`; natywny adapter nie parsuje `dd.MM.yyyy`), tydzień od
+    poniedziałku. Filtry mieszczą się w jednej linii przy szerokości treści 1600 px (`.container`); na węższym
+    ekranie się zawijają. Do API: `from` = From, `to` = To + 1 s
+    (UTC, `to` wyłącznie). W URL: `from`/`to` jako czas lokalny `YYYY-MM-DDTHH:mm:ss` (stare linki z samym dniem
+    `YYYY-MM-DD` działają: cały dzień), `actor`, `target`, `eventType`.
 - Operacje zapisu w user-service i auth-service nie zwracają błędów audytu: przy niedostępnym audit-service
   operacja kończy się sukcesem (audyt best effort), więc UI nie obsługuje kodów `AUDIT_*`.
 - **Access Denied** — komunikat i powrót do Dashboardu.

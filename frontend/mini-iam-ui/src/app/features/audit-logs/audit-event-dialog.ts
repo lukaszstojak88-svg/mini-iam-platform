@@ -6,6 +6,7 @@ import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { AuditEvent } from '../../core/api/api-models';
 import { StatusPill } from '../../shared/status-pill';
 import { actorName, targetName } from './audit-filters';
+import { DATE_TIME_PIPE_FORMAT } from '../../shared/date-time-adapter';
 
 /**
  * Read-only details of one audit event: actor and target by username (with the Keycloak id below), `details` as
@@ -21,7 +22,7 @@ import { actorName, targetName } from './audit-filters';
         <dt>Type</dt>
         <dd><app-status-pill>{{ event.eventType }}</app-status-pill></dd>
         <dt>Occurred</dt>
-        <dd>{{ event.occurredAt | date: 'medium' }} <span class="muted">({{ event.occurredAt }})</span></dd>
+        <dd>{{ event.occurredAt | date: dateTimeFormat }} <span class="muted">({{ event.occurredAt }})</span></dd>
         <dt>Actor</dt>
         <dd data-testid="dialog-actor">
           @if (actor) {
@@ -59,6 +60,7 @@ import { actorName, targetName } from './audit-filters';
 })
 export class AuditEventDialog {
   protected readonly event = inject<AuditEvent>(MAT_DIALOG_DATA);
+  protected readonly dateTimeFormat = DATE_TIME_PIPE_FORMAT;
   protected readonly actor = actorName(this.event);
   protected readonly target = targetName(this.event);
   /** `details.username` is skipped when it is already shown as the target user. */

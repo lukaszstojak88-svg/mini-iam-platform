@@ -5,7 +5,8 @@
 @if (status() === 'loaded') {
   <section class="tiles">
     <app-stat-tile icon="shield" label="Application roles" [value]="roles().length" />
-    <app-stat-tile icon="person_add" label="Assignable" [value]="assignableCount()" />
+    <app-stat-tile icon="person_add" label="Assignable roles" [value]="assignableCount()"
+                   [hint]="assignableNames()" />
   </section>
 
   <div class="columns">

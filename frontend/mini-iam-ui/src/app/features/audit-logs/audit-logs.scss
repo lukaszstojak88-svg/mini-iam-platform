@@ -2,6 +2,25 @@
   padding-bottom: 16px;
 }
 
+// Narrower fields than the global filter minimum, so all filters fit in one line on a wide screen.
+.filters mat-form-field {
+  min-width: 0;
+  width: 190px;
+}
+
+.date-time-filter {
+  width: 220px;
+}
+
+.filter-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
 .extra {
   margin-left: 8px;
   color: var(--app-text-muted);

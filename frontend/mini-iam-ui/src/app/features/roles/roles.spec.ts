@@ -50,6 +50,7 @@ describe('Roles', () => {
     const { root, roleApi } = await render();
 
     expect(byTestId(root, 'roles-table')?.textContent).toContain('Base role (automatic)');
+    expect(byTestId(root, 'stat-hint')?.textContent?.trim()).toBe('(ADMIN, MANAGER, AUDITOR)');
     expect(roleApi.getUserRoles).toHaveBeenCalledWith('kc-1');
     expect(byTestId(root, 'role-chips')?.textContent).toContain('MANAGER');
     expect(byTestId(root, 'remove-MANAGER')).not.toBeNull();
