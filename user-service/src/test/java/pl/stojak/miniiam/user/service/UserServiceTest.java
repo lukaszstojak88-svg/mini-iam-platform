@@ -87,13 +87,13 @@ class UserServiceTest {
         when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 
         UserResponse created = service.create(
-                new CreateUserRequest("John.Doe", "John@Example.com", "John", "Doe", "Secret123!"), ADMIN);
+                new CreateUserRequest("John.Doe", "John@Example.com", "John", "Doe", "Secret-Pass-123"), ADMIN);
 
         ArgumentCaptor<NewKeycloakUser> sent = ArgumentCaptor.forClass(NewKeycloakUser.class);
         verify(keycloak).createUser(sent.capture());
         assertThat(sent.getValue().username()).isEqualTo("john.doe");
         assertThat(sent.getValue().email()).isEqualTo("john@example.com");
-        assertThat(sent.getValue().temporaryPassword()).isEqualTo("Secret123!");
+        assertThat(sent.getValue().temporaryPassword()).isEqualTo("Secret-Pass-123");
         assertThat(created.keycloakId()).isEqualTo("kc-new");
         assertThat(created.username()).isEqualTo("john.doe");
         assertThat(created.enabled()).isTrue();
@@ -105,7 +105,7 @@ class UserServiceTest {
         when(repository.save(any(UserProfile.class))).thenThrow(new DataIntegrityViolationException("db down"));
 
         assertThatThrownBy(() -> service.create(
-                new CreateUserRequest("john", "john@example.com", null, null, "Secret123!"), ADMIN))
+                new CreateUserRequest("john", "john@example.com", null, null, "Secret-Pass-123"), ADMIN))
                 .isInstanceOf(UserSyncException.class);
 
         verify(keycloak).deleteUser("kc-new");
@@ -118,7 +118,7 @@ class UserServiceTest {
         when(keycloak.deleteUser("kc-new")).thenThrow(new KeycloakUnavailableException("deleteUser", null));
 
         assertThatThrownBy(() -> service.create(
-                new CreateUserRequest("john", "john@example.com", null, null, "Secret123!"), ADMIN))
+                new CreateUserRequest("john", "john@example.com", null, null, "Secret-Pass-123"), ADMIN))
                 .isInstanceOf(UserSyncException.class);
     }
 
@@ -256,7 +256,7 @@ class UserServiceTest {
         when(keycloak.findUserIdByUsername("john")).thenReturn(Optional.of("kc-orphan"));
 
         assertThatThrownBy(() -> service.create(
-                new CreateUserRequest("john", "john@example.com", null, null, "Secret123!"), ADMIN))
+                new CreateUserRequest("john", "john@example.com", null, null, "Secret-Pass-123"), ADMIN))
                 .isInstanceOf(KeycloakUnavailableException.class);
 
         verify(keycloak).deleteUser("kc-orphan");
@@ -449,7 +449,7 @@ class UserServiceTest {
         when(keycloak.createUser(any())).thenReturn("kc-new");
         when(repository.save(any(UserProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        service.create(new CreateUserRequest("John.Doe", "john@example.com", "John", "Doe", "Secret123!"), MANAGER);
+        service.create(new CreateUserRequest("John.Doe", "john@example.com", "John", "Doe", "Secret-Pass-123"), MANAGER);
 
         AuditEventRequest event = publishedEvent();
         assertThat(event.eventType()).isEqualTo(AuditEventType.USER_CREATED);
@@ -469,7 +469,7 @@ class UserServiceTest {
         when(auditEventPublisher.publish(any())).thenReturn(false);
 
         UserResponse created = service.create(
-                new CreateUserRequest("john", "john@example.com", null, null, "Secret123!"), ADMIN);
+                new CreateUserRequest("john", "john@example.com", null, null, "Secret-Pass-123"), ADMIN);
 
         assertThat(created.keycloakId()).isEqualTo("kc-new");
     }
@@ -480,7 +480,7 @@ class UserServiceTest {
         when(repository.save(any(UserProfile.class))).thenThrow(new DataIntegrityViolationException("db down"));
 
         assertThatThrownBy(() -> service.create(
-                new CreateUserRequest("john", "john@example.com", null, null, "Secret123!"), ADMIN))
+                new CreateUserRequest("john", "john@example.com", null, null, "Secret-Pass-123"), ADMIN))
                 .isInstanceOf(UserSyncException.class);
 
         verifyNoInteractions(auditEventPublisher);

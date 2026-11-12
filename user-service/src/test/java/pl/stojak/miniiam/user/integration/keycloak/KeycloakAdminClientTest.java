@@ -36,7 +36,7 @@ class KeycloakAdminClientTest {
     }
 
     private static NewKeycloakUser newUser() {
-        return new NewKeycloakUser("john", "john@example.com", "John", "Doe", "Secret123!");
+        return new NewKeycloakUser("john", "john@example.com", "John", "Doe", "Secret-Pass-123");
     }
 
     @Test
@@ -46,7 +46,7 @@ class KeycloakAdminClientTest {
                 .andExpect(jsonPath("$.username").value("john"))
                 .andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.credentials[0].temporary").value(true))
-                .andExpect(jsonPath("$.credentials[0].value").value("Secret123!"))
+                .andExpect(jsonPath("$.credentials[0].value").value("Secret-Pass-123"))
                 .andRespond(withStatus(HttpStatus.CREATED)
                         .location(URI.create(BASE + "/users/3f1c-42")));
 

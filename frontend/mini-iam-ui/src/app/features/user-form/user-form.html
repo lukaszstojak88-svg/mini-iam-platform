@@ -78,11 +78,11 @@
                     [attr.aria-label]="hidePassword() ? 'Show password' : 'Hide password'">
               <mat-icon>{{ hidePassword() ? 'visibility' : 'visibility_off' }}</mat-icon>
             </button>
-            <mat-hint>8-128 characters; the user must change it at first sign-in.</mat-hint>
+            <mat-hint>12-128 characters, different from the username and e-mail; the user must change it at first sign-in.</mat-hint>
             @if (form.controls.temporaryPassword.hasError('required')) {
               <mat-error>Temporary password is required.</mat-error>
             } @else if (form.controls.temporaryPassword.hasError('minlength') || form.controls.temporaryPassword.hasError('maxlength')) {
-              <mat-error>8-128 characters.</mat-error>
+              <mat-error>12-128 characters.</mat-error>
             } @else if (form.controls.temporaryPassword.hasError('server')) {
               <mat-error>{{ form.controls.temporaryPassword.getError('server') }}</mat-error>
             }

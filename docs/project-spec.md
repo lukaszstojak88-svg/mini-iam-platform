@@ -412,7 +412,8 @@ Wymagania:
     realmu) --- user-service nie wywołuje w tym celu `auth-service`;
 -   rejestracja zdarzenia audytowego;
 -   bez zwracania haseł ani sekretów;
--   `temporaryPassword` (8--128 znaków) jest przekazywane wyłącznie do
+-   `temporaryPassword` (12--128 znaków, zgodnie z polityką haseł realmu:
+    różne od nazwy użytkownika i e-maila) jest przekazywane wyłącznie do
     Keycloak jako hasło tymczasowe (`temporary=true`, wymuszona zmiana
     przy pierwszym logowaniu); aplikacja go nie zapisuje, nie loguje i
     nie zwraca;

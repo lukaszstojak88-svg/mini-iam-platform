@@ -66,7 +66,7 @@ export class UserForm implements OnInit {
       email: ['', [Validators.required, Validators.email, Validators.maxLength(255)]],
       firstName: ['', [Validators.required, notBlank, Validators.maxLength(100)]],
       lastName: ['', [Validators.required, notBlank, Validators.maxLength(100)]],
-      temporaryPassword: ['', [Validators.required, Validators.minLength(8), Validators.maxLength(128)]],
+      temporaryPassword: ['', [Validators.required, Validators.minLength(12), Validators.maxLength(128)]],
       confirmPassword: ['', Validators.required],
     },
     { validators: passwordsMatch },

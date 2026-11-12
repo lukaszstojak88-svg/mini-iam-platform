@@ -41,8 +41,8 @@ function fillValidCreateForm(root: HTMLElement): void {
   type(root, 'email', 'jan@example.com');
   type(root, 'firstName', ' Jan ');
   type(root, 'lastName', 'Kowalski');
-  type(root, 'temporaryPassword', 'Secret123!');
-  type(root, 'confirmPassword', 'Secret123!');
+  type(root, 'temporaryPassword', 'Secret-Pass-123');
+  type(root, 'confirmPassword', 'Secret-Pass-123');
 }
 
 const submit = (root: HTMLElement) => root.querySelector('form')!.dispatchEvent(new Event('submit'));
@@ -61,7 +61,7 @@ describe('UserForm', () => {
       email: 'jan@example.com',
       firstName: 'Jan',
       lastName: 'Kowalski',
-      temporaryPassword: 'Secret123!',
+      temporaryPassword: 'Secret-Pass-123',
     });
     expect(notify.success).toHaveBeenCalled();
     expect(TestBed.inject(Router).url).toBe('/users/id-9');
@@ -94,6 +94,20 @@ describe('UserForm', () => {
     expect(create).not.toHaveBeenCalled();
     expect(root.textContent).toContain('First name is required.');
     expect(root.textContent).toContain('Last name is required.');
+  });
+
+  it('requires a temporary password of at least 12 characters (realm password policy)', async () => {
+    const create = vi.fn();
+    const { harness, root } = await render('/users/new', { create });
+
+    fillValidCreateForm(root);
+    type(root, 'temporaryPassword', 'Short-Pass1');
+    type(root, 'confirmPassword', 'Short-Pass1');
+    submit(root);
+    harness.detectChanges();
+
+    expect(create).not.toHaveBeenCalled();
+    expect(root.textContent).toContain('12-128 characters.');
   });
 
   it('requires matching passwords', async () => {

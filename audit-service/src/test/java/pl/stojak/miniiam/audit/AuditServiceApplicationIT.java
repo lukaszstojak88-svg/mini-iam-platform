@@ -11,6 +11,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -40,6 +42,17 @@ class AuditServiceApplicationIT {
                 Integer.class);
 
         assertThat(changelogTables).isEqualTo(1);
+
+        // Spec §12.3 (12): the business table is built by Liquibase only (ddl-auto=validate), in the own schema.
+        List<String> columns = jdbcTemplate.queryForList(
+                "SELECT column_name FROM information_schema.columns "
+                        + "WHERE table_schema = 'audit' AND table_name = 'audit_events'",
+                String.class);
+        assertThat(columns).containsExactlyInAnyOrder("id", "event_type", "actor_user_id", "target_user_id", "details", "occurred_at", "correlation_id", "actor_username", "target_username");
+
+        Integer publicTables = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'", Integer.class);
+        assertThat(publicTables).isZero();
     }
 
     @Test

@@ -1,11 +1,14 @@
 package pl.stojak.miniiam.user.controller;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpMethod;
@@ -25,6 +28,7 @@ import pl.stojak.miniiam.user.exception.ErrorCode;
 import pl.stojak.miniiam.user.exception.GlobalExceptionHandler;
 import pl.stojak.miniiam.user.exception.InvalidRequestException;
 import pl.stojak.miniiam.user.exception.UserNotFoundException;
+import pl.stojak.miniiam.user.integration.keycloak.KeycloakBadRequestException;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakConflictException;
 import pl.stojak.miniiam.user.integration.keycloak.KeycloakUnavailableException;
 import pl.stojak.miniiam.user.security.SecurityConfig;
@@ -55,12 +59,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(controllers = UserController.class)
 @Import({SecurityConfig.class, CorrelationIdFilter.class, GlobalExceptionHandler.class})
+@ExtendWith(OutputCaptureExtension.class)
 class UserControllerTest {
 
     private static final UUID ID = UUID.fromString("11111111-2222-3333-4444-555555555555");
     private static final String CREATE_BODY = """
             {"username":"john.doe","email":"john@example.com","firstName":"John","lastName":"Doe",
-             "temporaryPassword":"Secret123!"}""";
+             "temporaryPassword":"Secret-Pass-123"}""";
     private static final String UPDATE_BODY = """
             {"email":"john@example.com","firstName":"John","lastName":"Doe"}""";
     private static final String STATUS_BODY = """
@@ -147,7 +152,43 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.keycloakId").value("kc-1"))
                 .andExpect(jsonPath("$.temporaryPassword").doesNotExist())
                 .andExpect(content().string(org.hamcrest.Matchers.not(
-                        org.hamcrest.Matchers.containsString("Secret123!"))));
+                        org.hamcrest.Matchers.containsString("Secret-Pass-123"))));
+    }
+
+    @Test
+    void temporaryPasswordIsNeverLoggedWhenCreationFails(CapturedOutput output) throws Exception {
+        when(userService.create(any(), any())).thenThrow(new IllegalStateException("database down"));
+
+        mockMvc.perform(json(post("/api/users"), CREATE_BODY).with(as("ADMIN")))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(output.getAll()).contains("Unexpected error").doesNotContain("Secret-Pass-123");
+    }
+
+    @Test
+    void passwordRejectedByKeycloakPolicyGives400WithoutEchoingIt(CapturedOutput output) throws Exception {
+        when(userService.create(any(), any()))
+                .thenThrow(new KeycloakBadRequestException("create user", new RuntimeException("invalidPasswordMinLengthMessage")));
+
+        mockMvc.perform(json(post("/api/users"), CREATE_BODY).with(as("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_USER_DATA"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Secret-Pass-123"))));
+
+        assertThat(output.getAll()).doesNotContain("Secret-Pass-123");
+    }
+
+    @Test
+    void tooShortTemporaryPasswordIsRejectedWithoutEchoingIt(CapturedOutput output) throws Exception {
+        mockMvc.perform(json(post("/api/users"), CREATE_BODY.replace("Secret-Pass-123", "Short-Pass1"))
+                        .with(as("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[?(@.field=='temporaryPassword')]").exists())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Short-Pass1"))));
+
+        assertThat(output.getAll()).doesNotContain("Short-Pass1");
     }
 
     @Test

@@ -116,7 +116,7 @@ Każdy widok obsługuje stany **loading / empty / error** (z przyciskiem „Try 
   `GET /api/users/{keycloakId}/roles`).
 - **Create / Edit User** — Reactive Forms; walidacja zgodna z backendem: `username` wymagany, 3–100 znaków
   `[A-Za-z0-9._-]` (backend zapisuje małymi literami); `email` wymagany, format e-mail, ≤ 255; `firstName`,
-  `lastName` **wymagane** (niepuste), ≤ 100 — także przy edycji i w edycji własnego profilu na Dashboardzie. Tylko przy tworzeniu: **hasło tymczasowe** (wymagane, 8–128 znaków,
+  `lastName` **wymagane** (niepuste), ≤ 100 — także przy edycji i w edycji własnego profilu na Dashboardzie. Tylko przy tworzeniu: **hasło tymczasowe** (wymagane, 12–128 znaków — polityka haseł realmu; hasło równe nazwie użytkownika lub e-mailowi odrzuca dopiero Keycloak → 400 `INVALID_USER_DATA`,
   `type="password"`, z polem potwierdzenia po stronie UI) — trafia wyłącznie do Keycloak, użytkownik zmienia je
   przy pierwszym logowaniu; formularz nie przechowuje go po wysłaniu. `username` nieedytowalny po utworzeniu.
   Brak pól ról. Błędy: 400 `VALIDATION_FAILED` → komunikaty przy polach z `errors[]`; 409
@@ -226,6 +226,8 @@ reset hasła w aplikacji (robi to Keycloak), MFA, tryb ciemny, i18n (tylko angie
 - Testy jednostkowe (Vitest) dla: guardów i logiki ról, interceptorów, serwisów API (`HttpTestingController`),
   formularzy (walidacja, obsługa 409), komponentów widoków (stany loading/empty/error, widoczność akcji per rola).
 - `npx ng test --watch=false` i `npx ng build` muszą przechodzić przed zakończeniem etapu.
+- Pokrycie: `npm run test:coverage` (`@vitest/coverage-v8`, wersja zgodna z `vitest`), raport w `coverage/`;
+  bez progu blokującego.
 - Budżet bundla: ostrzeżenie 750 kB, błąd 1.5 MB (`angular.json`); wszystkie widoki ładowane leniwie
   (`loadComponent`) — początkowy bundle ok. 600 kB.
 - Testy widoków korzystają z `RouterTestingHarness` (prawdziwy router, query params, binding `:id`) i stubów

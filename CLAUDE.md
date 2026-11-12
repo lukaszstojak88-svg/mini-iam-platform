@@ -23,8 +23,8 @@ Komunikacja i dokumentacja po polsku; kod, nazwy klas, metod i endpointów po an
 
 ## Aktualny etap
 
-Etapy 1–6 zrealizowane i zaakceptowane.
-Następny: **Etap 7 — Dokumentacja i jakość** (nie zaczynać bez decyzji użytkownika).
+Etapy 1–6 zrealizowane i zaakceptowane. **Etap 7 — Dokumentacja i jakość** zrealizowany, oczekuje akceptacji.
+To ostatni etap planu; kolejne prace (np. `docs/backlog/`) tylko na wyraźne polecenie użytkownika.
 
 ## Komendy
 
@@ -38,7 +38,12 @@ docker compose --profile elk down -v          # czysty reset (ponowny realm impo
 ./scripts/start-frontend.sh [--with-backend]          # Angular dev server, http://localhost:4200
 cd frontend/mini-iam-ui && npx ng test --watch=false   # testy Angular (Vitest)
 cd frontend/mini-iam-ui && npx ng build                # build produkcyjny
+cd frontend/mini-iam-ui && npm run test:coverage       # testy Angular + pokrycie (coverage/)
+./scripts/e2e-smoke.sh                                 # E2E na działającym Compose (401/403, correlationId)
+ADMIN_TOKEN=<token> ./scripts/e2e-smoke.sh             # + scenariusz administracyjny, audyt, higiena logów
 ```
+
+Pokrycie backendu (JaCoCo): `*/target/site/jacoco/index.html` po `./mvnw test` lub `./mvnw verify`.
 
 Na tej maszynie (Windows, proxy TLS) Maven wymaga `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT`,
 a npm/npx `NODE_OPTIONS=--use-system-ca`.
@@ -118,6 +123,15 @@ a npm/npx `NODE_OPTIONS=--use-system-ca`.
   stan list (strona, rozmiar, sort, filtry) w query params. Audit log: aktor/cel jako `actorUsername`/`targetUsername`
   ze zdarzenia (fallback: `details.username`, potem skrócony keycloakId; bez pobierania nazw — AUDITOR nie ma
   `GET /api/users`).
+- Etap 7: polityka haseł realmu `length(12) and maxLength(128) and notUsername and notEmail` (spójna z
+  `CreateUserRequest` i formularzem: min. 12; odrzucenie przez Keycloak → 400 `INVALID_USER_DATA`); w realmie
+  włączone zdarzenia logowania (7 dni) i admin events bez szczegółów. Logstash maskuje JWT, `Bearer`/`Basic`
+  i pary `password`/`secret`/`client_secret`/`temporaryPassword` w `message`, `error.message`,
+  `error.stack_trace` (druga linia obrony). JaCoCo 0.8.16 bez progu (unit + IT w jednym `jacoco.exec`),
+  `@vitest/coverage-v8` bez progu. `LogHygieneTest` (×3, kopiowany) — asercje niezależne od formatu logów
+  (kontekst logowania jest współdzielony między testami). Test między serwisami tylko jako
+  `scripts/e2e-smoke.sh` (bash + curl + node, token ADMIN z zewnątrz — bez klienta z password grant).
+  Ograniczenia środowiska lokalnego opisane w `docs/architecture.md` §7.
 - UI: z makiety bierzemy tylko wygląd; funkcje spoza MVP (tworzenie ról, import/eksport, Pending Reviews,
   Settings, Billing, globalna wyszukiwarka, powiadomienia) pomijamy.
 

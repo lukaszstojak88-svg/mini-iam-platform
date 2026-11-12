@@ -60,6 +60,16 @@ Każde żądanie dostaje nagłówek `X-Correlation-Id` (`postman-<timestamp>`, s
 w odpowiedzi — po nim można znaleźć żądanie w logach serwisów i w Kibanie (`correlationId : "postman-..."`),
 a dla operacji administracyjnych także wpis w audycie (pole `correlationId` w *04 audit-service*).
 
+## Bezpieczeństwo
+
+- Nie eksportuj środowiska ani kolekcji z *Current values* — `serviceToken` (access token) i
+  `serviceClientSecret` trafiłyby do pliku. Pliki w repozytorium mają te wartości puste.
+- Hasło tymczasowe w *Utworzenie użytkownika* (`Temp-Pass-123`) spełnia politykę haseł realmu (12–128 znaków,
+  różne od nazwy użytkownika i e-maila). Krótsze → 400 `VALIDATION_FAILED`, równe nazwie użytkownika → 400
+  `INVALID_USER_DATA`.
+- Token użytkownika z Postmana można przekazać do testu end-to-end: `ADMIN_TOKEN=<token> ./scripts/e2e-smoke.sh`
+  (README, sekcja „Testy”).
+
 ## Utrzymanie
 
 Kolekcję aktualizujemy razem z API: nowy lub zmieniony endpoint = nowy lub zmieniony request (z opisem ról

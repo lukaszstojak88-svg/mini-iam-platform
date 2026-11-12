@@ -7,11 +7,13 @@ w architekturze mikroserwisowej (Spring Boot 3.5 + Keycloak 26 + PostgreSQL + EL
 - Plan etapów: [`docs/implementation-plan.md`](docs/implementation-plan.md)
 - Architektura: [`docs/architecture.md`](docs/architecture.md)
 - Kolekcja Postman z requestami API: [`docs/postman/`](docs/postman/README.md)
+- Testy i raporty pokrycia: [`docs/tests.md`](docs/tests.md)
 
-> **Status:** Etap 6 (Angular UI). Logowanie przez Keycloak (OIDC + PKCE), weryfikacja JWT w każdym serwisie,
-> zarządzanie użytkownikami w Keycloak i lokalnym profilu (`/api/users`), odczyt i przypisywanie ról
-> (`/api/roles`, `/api/users/{keycloakId}/roles`), audyt operacji administracyjnych (`/api/audit-events`)
-> i interfejs Angular do wszystkich tych operacji (Dashboard, Users, Roles, Audit log).
+> **Status:** MVP kompletne (Etap 7 — dokumentacja i jakość). Logowanie przez Keycloak (OIDC + PKCE),
+> weryfikacja JWT w każdym serwisie, zarządzanie użytkownikami w Keycloak i lokalnym profilu (`/api/users`),
+> odczyt i przypisywanie ról (`/api/roles`, `/api/users/{keycloakId}/roles`), audyt operacji administracyjnych
+> (`/api/audit-events`), interfejs Angular (Dashboard, Users, Roles, Audit log), centralne logi w ELK
+> ze śledzeniem po `correlationId`, testy end-to-end (`scripts/e2e-smoke.sh`) i raporty pokrycia.
 
 ## 1. Wymagania lokalne
 
@@ -142,6 +144,10 @@ Konta testowe do logowania na każdą rolę (też z realm importu):
 Profil w user-service powstaje przy pierwszym logowaniu (just-in-time). To konta deweloperskie — nie do
 środowisk innych niż lokalne.
 
+**Polityka haseł realmu:** 12–128 znaków, hasło różne od nazwy użytkownika i e-maila. Dotyczy haseł
+tymczasowych (`POST /api/users`, formularz „Add user”) i haseł ustawianych przy pierwszym logowaniu. Hasła
+z `.env` też muszą ją spełniać — generator z sekcji 2 daje 32 znaki.
+
 Realm jest importowany **tylko przy pierwszym starcie** (gdy nie istnieje w bazie Keycloak). Zmiana pliku
 realmu lub haseł w `.env` wymaga czystego startu: `docker compose down -v`.
 
@@ -159,7 +165,9 @@ Konfiguracja realmu:
   zmieniać ich ról), ale tylko `mini-iam-service` ma ją w scope mappingu, więc tylko jego token ją zawiera;
 - audience `mini-iam-api` w tokenach `mini-iam-frontend` i `mini-iam-service`; `fullScopeAllowed=false`
   (tokeny zawierają tylko role przypisane w scope mappings);
-- czas życia access tokena: 5 minut.
+- czas życia access tokena: 5 minut;
+- brute force protection, zdarzenia logowania (7 dni) i zdarzenia administracyjne (bez treści reprezentacji)
+  włączone — konsola Keycloak → realm `mini-iam` → **Events**.
 
 ### Dodatkowe konta testowe (inne role)
 
@@ -189,6 +197,22 @@ TOKEN=$(curl -s -d grant_type=client_credentials -d client_id=mini-iam-service \
 curl -i http://localhost:8082/api/auth/me                                  # 401
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8082/api/auth/me   # 200
 ```
+
+### Sekrety i logi — stan weryfikacji (Etap 7)
+
+| Obszar | Jak jest zabezpieczony | Jak sprawdzono |
+|---|---|---|
+| Sekrety w repozytorium | tylko `.env` (w `.gitignore`); `.env.example`, realm import, Compose i `application.yml` mają placeholdery bez wartości domyślnych | przegląd plików i historii Git |
+| Sekrety w obrazach Docker | brak `ARG`/`ENV` z sekretami, `.dockerignore` wyklucza `.env`, kontener działa jako użytkownik `app` (nie root) | przegląd `*/Dockerfile` |
+| Sekrety we frontendzie | public client (PKCE), tokeny tylko w pamięci, Bearer tylko dla `http://localhost:808[1-3]/api/**` | przegląd `environment.ts`, `app.config.ts` |
+| Tokeny i hasła w logach | serwisy logują metodę, ścieżkę, status, czas i identyfikatory; rekordy z hasłem mają własny `toString()`; Feign bez loggera body | `LogHygieneTest` (×3), testy w `UserControllerTest`, `scripts/e2e-smoke.sh` |
+| Logi w ELK | Logstash dodatkowo maskuje JWT, `Bearer`/`Basic`, `password=`, `secret=`, `client_secret`… w `message`, `error.message`, `error.stack_trace` | test pipeline'u (sekcja 10) |
+| Szczegóły techniczne w odpowiedziach | `include-stacktrace: never`, `include-message: never`, ProblemDetail z własnym tekstem; actuator tylko `health` bez szczegółów | testy kontrolerów, `scripts/e2e-smoke.sh` |
+| Minimalne uprawnienia | osobne klienty `mini-iam-admin` (Admin API) i `mini-iam-service` (serwis–serwis), `fullScopeAllowed=false` | `KeycloakJwtValidationIT`, `scripts/e2e-smoke.sh` |
+| Hasła użytkowników | polityka realmu (12–128 znaków, nie username/e-mail), brute force protection, zdarzenia logowania | `UserServiceKeycloakIT` |
+
+Świadome ograniczenia środowiska lokalnego (HTTP bez TLS, Filebeat z `docker.sock`, brak CSP, konta demo) są
+opisane w [`docs/architecture.md`](docs/architecture.md#7-ograniczenia-środowiska-lokalnego).
 
 ## 7. Zarządzanie użytkownikami (user-service)
 
@@ -330,22 +354,110 @@ do każdego wpisu logu jako `correlationId` (spec §16).
 Przepływ: serwisy (JSON/ECS na stdout, sterownik `json-file`) → Filebeat → Logstash → Elasticsearch
 (indeks `mini-iam-logs-YYYY.MM.dd`) → Kibana (data view **Mini IAM logs**, tworzony automatycznie).
 
-Śledzenie żądania:
+Uruchomienie stosu: `docker compose --profile elk up -d --build`. Kibana: http://localhost:5601, login `elastic` /
+`ELASTIC_PASSWORD` z `.env`. Pierwsze logi pojawiają się po kilkunastu sekundach od startu Kibany.
+
+### Śledzenie żądania po `correlationId` w Kibanie
+
+1. **Zdobądź `correlationId`** — jeden z trzech sposobów:
+   - nagłówek odpowiedzi `X-Correlation-Id` (DevTools → *Network* → żądanie → *Response Headers*, `curl -i`,
+     Postman → *Headers*);
+   - własny identyfikator wysłany w żądaniu, np. `X-Correlation-Id: demo-123` (dozwolone `[A-Za-z0-9_-]`,
+     maks. 100 znaków; niepoprawny jest zastępowany nowym UUID);
+   - widok **Audit log** w UI (szczegóły zdarzenia → *Correlation ID*) albo pole `correlationId`
+     w `GET /api/audit-events`. Przy błędach 5xx UI dopisuje do komunikatu `Request ID: …`.
+2. **Kibana → Discover** → data view **Mini IAM logs** (tworzony automatycznie) → ustaw zakres czasu (np.
+   *Last 1 hour*).
+3. **Zapytanie KQL:** `correlationId : "demo-123"` (dokładnie: `correlationId.keyword : "demo-123"`).
+4. **Kolumny:** dodaj `service.name`, `log.level`, `log.logger`, `message`, posortuj po `@timestamp` rosnąco.
+   Widać wtedy przebieg żądania przez serwisy, np. dla nadania roli:
+
+   | `service.name` | `message` |
+   |---|---|
+   | `auth-service` | `Role MANAGER assigned to <keycloakId> by <actorId>` |
+   | `audit-service` | `Audit event ROLE_ASSIGNED recorded: id=…, actor=…, target=…` |
+   | `audit-service` | `HTTP POST /internal/api/audit-events -> 201 (… ms)` |
+   | `auth-service` | `Audit event ROLE_ASSIGNED recorded in … ms` |
+   | `auth-service` | `HTTP POST /api/users/<keycloakId>/roles -> 200 (… ms)` |
+
+   Ten sam `correlationId` jest w kolumnie `correlation_id` wpisu audytu.
+5. **Przydatne zapytania:**
+   - `correlationId : "demo-123" and log.level : "ERROR"` — błędy w ramach jednego żądania;
+   - `message : "Audit event NOT recorded"` — operacje bez wpisu audytu (audit-service był niedostępny);
+   - `service.name : "user-service" and log.level : "ERROR"` — błędy jednego serwisu (5xx, kompensacje, Keycloak);
+   - `message : "Access denied" or message : "Unauthenticated request rejected"` — odmowy dostępu (401/403);
+   - `correlationId.keyword : smoke-1794480022-*` — wszystkie żądania jednego uruchomienia
+     `scripts/e2e-smoke.sh` (skrypt wypisuje gotowe zapytanie). Przy `*` używaj pola `.keyword`: `correlationId`
+     jest polem tekstowym, więc wzorzec z gwiazdką dopasowałby też inne identyfikatory z tymi samymi fragmentami.
+
+Szybki test bez UI:
 
 ```bash
-curl -i -H "X-Correlation-Id: demo-123" http://localhost:8081/actuator/health
+curl -i -H "X-Correlation-Id: demo-123" http://localhost:8081/api/users/me   # 401, ale log i nagłówek są
 ```
 
-W Kibanie: **Discover** → data view *Mini IAM logs* → zapytanie `correlationId : "demo-123"`.
 Żądania do `/actuator/**` nie generują logu zakończenia (healthchecki), ale też dostają `X-Correlation-Id`.
+
+**Maskowanie w Logstash** (`infrastructure/elk/logstash/pipeline/logstash.conf`) to druga linia obrony: serwisy
+nie logują sekretów, ale gdyby JWT, `Bearer …`, `Basic …` albo para `password=` / `secret=` / `client_secret=` /
+`"temporaryPassword":"…"` trafiła do `message`, `error.message` lub `error.stack_trace`, w Elasticsearch
+zostanie zapisana jako `[REDACTED]` / `[REDACTED_JWT]`.
 
 ## 11. Testy
 
 ```bash
-./mvnw test      # testy jednostkowe i MockMvc (reguły 401/403, CORS, converter ról)
+./mvnw test      # testy jednostkowe i MockMvc (reguły 401/403, CORS, converter ról, higiena logów)
 ./mvnw verify    # + testy integracyjne (*IT) z Testcontainers - wymaga działającego Dockera
 cd frontend/mini-iam-ui && npm test -- --watch=false   # testy Angular (Vitest)
+cd frontend/mini-iam-ui && npm run test:coverage       # to samo + raport pokrycia
+./scripts/e2e-smoke.sh                                  # test end-to-end na działającym Compose (niżej)
 ```
+
+**Pokrycie kodu** (bez progu blokującego build):
+
+- backend — JaCoCo: `*/target/site/jacoco/index.html`; po `./mvnw test` obejmuje testy jednostkowe, po
+  `./mvnw verify` także integracyjne (wspólny plik `target/jacoco.exec`);
+- frontend — `npm run test:coverage` (`@vitest/coverage-v8`): podsumowanie w konsoli, raport HTML
+  w `frontend/mini-iam-ui/coverage/mini-iam-ui/index.html`.
+
+Jak wygenerować, otworzyć i czytać raporty: [`docs/tests.md`](docs/tests.md).
+
+**Test end-to-end** `scripts/e2e-smoke.sh` (Git Bash / Linux / macOS, wymaga `curl` i `node`) sprawdza działające
+środowisko przez wszystkie serwisy:
+
+```bash
+docker compose up -d --build
+./scripts/e2e-smoke.sh                                 # 401/403, tokeny techniczne, generowanie correlationId
+read -rs ADMIN_TOKEN && export ADMIN_TOKEN            # wklej token (nie trafi do historii powłoki)
+./scripts/e2e-smoke.sh                                 # + pełny scenariusz administracyjny
+```
+
+`ADMIN_TOKEN` to access token konta z rolą ADMIN (Postman → *Get New Access Token* jako `admin`, albo DevTools →
+żądanie do API → nagłówek `Authorization` bez `Bearer `). Żyje 5 minut, a klient frontendu nie ma password grant,
+więc skrypt nie pobiera go sam. Scenariusz: tworzy użytkownika, sprawdza rolę `USER`, nadaje i odbiera `MANAGER`
+(także 409 i 400 dla `SERVICE`), dezaktywuje, aktywuje i usuwa konto. Następnie sprawdza, czy każda operacja ma wpis
+audytu z `correlationId` żądania, czy odrzucone operacje nie są audytowane, czy ten sam `correlationId` jest
+w logach kilku serwisów oraz czy w logach (`docker compose logs`) nie ma hasła tymczasowego, tokenów ani nagłówka
+`Authorization`. Kod wyjścia ≠ 0 oznacza błąd.
+
+**Mapowanie testów akceptacyjnych (spec §12.3):**
+
+| # | Wymaganie | Testy |
+|---|---|---|
+| 1 | anonim → 401 | `SecurityRulesTest` (×3), `UserControllerTest`, `RoleControllersTest`, `AuditEventControllersTest`, `KeycloakJwtValidationIT` (zły issuer, brak audience, zły podpis), smoke |
+| 2 | `USER` → 403 na endpoincie administratora | `SecurityRulesTest` (×3), `UserControllerTest` (macierz ról), `RoleManagementKeycloakIT` (prawdziwy token), smoke (token serwisowy) |
+| 3 | ADMIN tworzy użytkownika | `UserControllerTest`, `UserServiceKeycloakIT`, smoke |
+| 4 | konto w Keycloak + profil lokalny | `UserServiceKeycloakIT.createdUserExistsInKeycloakWithTemporaryPasswordAndBaseRole` |
+| 5 | nowy użytkownik ma `USER` | `UserServiceKeycloakIT`, `RoleManagementKeycloakIT`, smoke |
+| 6 | ADMIN nadaje `MANAGER` | `RoleManagementKeycloakIT` (rola w nowym tokenie użytkownika), `RoleServiceTest`, smoke |
+| 7 | `MANAGER` nie zmienia ról | `RoleManagementKeycloakIT` (prawdziwy token MANAGER), `RoleControllersTest` |
+| 8 | ostatni aktywny ADMIN zachowuje rolę | `RoleServiceTest`, `RoleManagementKeycloakIT`, `UserServiceTest`, `UserServiceKeycloakIT` |
+| 9 | dezaktywacja zmienia stan w Keycloak | `UserServiceKeycloakIT.updateAndStatusChangesArePropagatedToKeycloak`, `UserServiceTest` (kompensacja) |
+| 10 | operacje widoczne w audycie | `AuditEventPublisherTest` (×2), `AuditEventApiIT`, `UserServiceTest`, **smoke** (wpisy z `correlationId` przez wszystkie serwisy) |
+| 11 | użytkownik nie czyta cudzego profilu | `UserControllerTest`, `UserServiceKeycloakIT.regularUserCannotReadAnotherUsersProfile`, `RoleControllersTest` |
+| 12 | Liquibase na czystej bazie | `UserServiceApplicationIT`, `AuditServiceApplicationIT` (tabele, kolumny, pusty `public`) |
+| 13 | niedostępna zależność bez wycieku szczegółów | `UserControllerTest`, `RoleControllersTest`, `KeycloakAdminClientTest` (×2), `AuditEventPublisherTest` (audyt niedostępny → operacja 2xx), smoke |
+| 14 | wygenerowany `X-Correlation-Id` w odpowiedzi, logach i audycie | `CorrelationIdFilterTest` (×3), `LogHygieneTest` (×3), `AuditEventPublisherTest`, `AuditEventApiIT`, **smoke** (logi Docker w formacie ECS i wpisy audytu) |
 
 Testy integracyjne uruchamiają PostgreSQL i Keycloak (z tym samym realm importem co Compose)
 w Testcontainers: migracje Liquibase na czystej bazie, walidacja prawdziwych tokenów
@@ -380,3 +492,9 @@ Nie wymagają uruchomionego Compose ani ELK.
 | Elasticsearch kończy się błędem pamięci | Zwiększ pamięć dla Docker Desktop (min. 4 GB z profilem `elk`). |
 | PostgreSQL: `password authentication failed` po zmianie haseł w `.env` | Konta bazy tworzy `infrastructure/postgres/init/01-init.sh` tylko przy pustym wolumenie — zmień hasło jako `postgres` (`ALTER ROLE user_service PASSWORD '...';`) albo `docker compose down -v` (**kasuje dane**). |
 | Port zajęty | Zmień odpowiedni `*_PORT` w `.env`. |
+| `POST /api/users`: 400 `INVALID_USER_DATA`, a dane są poprawne | Keycloak odrzucił hasło tymczasowe przez politykę realmu (hasło równe nazwie użytkownika lub e-mailowi). Podaj inne hasło (12–128 znaków). |
+| Keycloak nie importuje realmu `mini-iam` (brak realmu, błędy logowania), w `docker compose logs keycloak` błąd polityki haseł | Hasła `MINI_IAM_ADMIN_PASSWORD` / `MINI_IAM_DEMO_PASSWORD` w `.env` muszą spełniać politykę realmu (12–128 znaków, różne od nazwy użytkownika) — popraw je i zrób `docker compose down -v`. |
+| Polityka haseł / zdarzenia Keycloak nie działają po aktualizacji repo | Zostały dodane do realm importu w Etapie 7 — `docker compose down -v` (**kasuje dane**) i ponowny start. |
+| `scripts/e2e-smoke.sh`: `ADMIN_TOKEN is valid and has role ADMIN` → FAIL | Token wygasł (5 min) albo to nie jest token ADMIN — pobierz nowy i uruchom od razu. |
+| `scripts/e2e-smoke.sh`: brak `correlationId` w logach | Skrypt czyta `docker compose logs` — uruchamiaj go na tej samej maszynie co Compose, z katalogu repozytorium lub przez ścieżkę `./scripts/...`. |
+| `npm run test:coverage`: brak `@vitest/coverage-v8` | `npm ci` w `frontend/mini-iam-ui` (pakiet jest w `devDependencies`). |

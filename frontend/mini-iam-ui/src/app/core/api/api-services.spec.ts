@@ -32,13 +32,13 @@ describe('API services', () => {
 
     it('uses the right methods and URLs for commands', () => {
       const api = TestBed.inject(UserApiService);
-      api.create({ username: 'jan', email: 'j@x.pl', firstName: null, lastName: null, temporaryPassword: 'Secret123' }).subscribe();
+      api.create({ username: 'jan', email: 'j@x.pl', firstName: null, lastName: null, temporaryPassword: 'Secret-Pass-123' }).subscribe();
       api.update('id-1', { email: 'j@x.pl', firstName: 'Jan', lastName: null }).subscribe();
       api.setEnabled('id-1', false).subscribe();
       api.delete('id-1').subscribe();
       api.updateMe({ email: 'me@x.pl', firstName: null, lastName: null }).subscribe();
 
-      expect(http.expectOne({ method: 'POST', url: 'http://localhost:8081/api/users' }).request.body.temporaryPassword).toBe('Secret123');
+      expect(http.expectOne({ method: 'POST', url: 'http://localhost:8081/api/users' }).request.body.temporaryPassword).toBe('Secret-Pass-123');
       expect(http.expectOne({ method: 'PUT', url: 'http://localhost:8081/api/users/id-1' }).request.body.firstName).toBe('Jan');
       expect(http.expectOne({ method: 'PATCH', url: 'http://localhost:8081/api/users/id-1/status' }).request.body).toEqual({ enabled: false });
       http.expectOne({ method: 'DELETE', url: 'http://localhost:8081/api/users/id-1' });

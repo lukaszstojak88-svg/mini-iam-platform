@@ -134,6 +134,30 @@ class UserServiceKeycloakIT {
     }
 
     @Test
+    void regularUserCannotReadAnotherUsersProfile() throws Exception {
+        JsonNode other = createUser("it.other.profile");
+
+        // Spec §12.3 (11): a USER only reaches its own profile via /me, never someone else's by id.
+        mockMvc.perform(get("/api/users/" + other.get("id").asText()).with(as("kc-it-plain-user", "USER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/users").with(as("kc-it-plain-user", "USER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void passwordViolatingRealmPolicyIsRejectedAndNoAccountIsLeft() throws Exception {
+        // Long enough for the DTO, but the realm policy forbids a password equal to the username.
+        mockMvc.perform(post("/api/users").with(admin()).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"username":"it.policy.user","email":"it.policy@example.com","firstName":"Policy",
+                         "lastName":"User","temporaryPassword":"it.policy.user"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_USER_DATA"));
+
+        assertThat(keycloakAdminGet("/users?exact=true&username=it.policy.user").size()).isZero();
+        assertThat(repository.findAll()).noneMatch(profile -> "it.policy.user".equals(profile.getUsername()));
+    }
+
+    @Test
     void duplicateUsernameIsRejectedWithConflict() throws Exception {
         createUser("it.duplicate");
 

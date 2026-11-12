@@ -15,7 +15,7 @@ public record CreateUserRequest(
         @NotBlank @Email @Size(max = 255) String email,
         @NotBlank @Size(max = 100) String firstName,
         @NotBlank @Size(max = 100) String lastName,
-        @NotBlank @Size(min = 8, max = 128) String temporaryPassword) {
+        @NotBlank @Size(min = 12, max = 128) String temporaryPassword) {
 
     @Override
     public String toString() {
